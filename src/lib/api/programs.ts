@@ -10,6 +10,7 @@ export interface TrainingProgram {
   currentWeek: number;
   status: "draft" | "active" | "paused" | "completed";
   startedAt: string | null;
+  plannedDays: number | null;
   days: ProgramDay[];
 }
 
@@ -24,7 +25,7 @@ export interface ProgramDay {
 }
 
 const SELECT = `
-  id, name, description, duration_weeks, current_week, status, started_at,
+  id, name, description, duration_weeks, current_week, status, started_at, planned_days,
   program_days (
     id, week_number, day_number, name, scheduled_day, order_index,
     program_exercises (
@@ -55,6 +56,7 @@ function mapProgram(row: Record<string, unknown>): TrainingProgram {
     currentWeek: num(row.current_week, 1),
     status: (row.status as TrainingProgram["status"]) ?? "draft",
     startedAt: (row.started_at as string | null) ?? null,
+    plannedDays: row.planned_days == null ? null : num(row.planned_days),
     days: days.map((day) => mapDay(day as Record<string, unknown>)).sort((a, b) => a.weekNumber - b.weekNumber || a.orderIndex - b.orderIndex),
   };
 }
@@ -99,6 +101,7 @@ export async function saveProgram(userId: string, program: TrainingProgram) {
     current_week: program.currentWeek,
     status: program.status,
     started_at: program.startedAt,
+    planned_days: program.plannedDays,
   });
   if (saved.error) throw saved.error;
   if (program.days.length === 0) return;

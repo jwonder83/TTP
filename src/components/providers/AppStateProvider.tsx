@@ -12,12 +12,14 @@ import { saveProfile } from "@/lib/api/profiles";
 import { fetchRecords } from "@/lib/api/progress";
 import { deleteRoutine as removeRoutine, saveRoutine as persistRoutine } from "@/lib/api/routines";
 import { mergeWorkouts } from "@/lib/api/rows";
+import { fetchProgramVersions, insertProgramVersion, recordSubstitution, saveCoachingSetup, type StoredTrainingMax, type StoredTrainingProfile } from "@/lib/api/coaching";
 import { saveExerciseNote, saveProgram, type TrainingProgram } from "@/lib/api/programs";
 import { saveGoal, saveReadiness, saveRecommendation, saveTrainingConfig } from "@/lib/api/training";
 import { clearOfflineWorkout, loadOfflineWorkout, saveOfflineWorkout, writeQueueItem } from "@/lib/offline/db";
 import { isTransientNetwork, queueId, type SyncStatus } from "@/lib/offline/model";
 import { rememberFinish, runSync } from "@/lib/offline/runSync";
 import { sessionFromProgramExercise } from "@/lib/program/buildWorkout";
+import type { EquipmentChoice } from "@/lib/programming/types";
 import {
   cancelWorkout,
   completeWorkout,
@@ -72,11 +74,16 @@ interface RemoteState {
   goals: TrainingGoal[];
   programs: TrainingProgram[];
   exerciseNotes: Array<{ exerciseId: string; body: string }>;
+  trainingProfile: StoredTrainingProfile | null;
+  equipment: EquipmentChoice[];
+  preferences: Array<{ exerciseId: string; preferenceType: "PREFERRED" | "AVOID" }>;
+  trainingMaxes: StoredTrainingMax[];
 }
 
 interface AppStateContextValue {
   ready: boolean;
   configured: boolean;
+  userId: string | null;
   profile: Profile;
   exercises: Exercise[];
   routines: Routine[];
@@ -89,6 +96,10 @@ interface AppStateContextValue {
   goals: TrainingGoal[];
   programs: TrainingProgram[];
   exerciseNotes: Array<{ exerciseId: string; body: string }>;
+  trainingProfile: StoredTrainingProfile | null;
+  equipment: EquipmentChoice[];
+  preferences: Array<{ exerciseId: string; preferenceType: "PREFERRED" | "AVOID" }>;
+  trainingMaxes: StoredTrainingMax[];
   syncStatus: SyncStatus;
   chrome: ChromeMode;
   setChrome: (chrome: ChromeMode) => void;
@@ -113,6 +124,14 @@ interface AppStateContextValue {
   saveExerciseNote: (exerciseId: string, body: string) => Promise<void>;
   startProgramDay: (programId: string, dayId: string) => Promise<boolean>;
   replaceWorkoutExercise: (sessionId: string, exerciseId: string) => Promise<void>;
+  saveCoachingSetup: (
+    profile: StoredTrainingProfile,
+    equipment: EquipmentChoice[],
+    preferences: Array<{ exerciseId: string; preferenceType: "PREFERRED" | "AVOID" }>,
+    trainingMaxes: StoredTrainingMax[],
+  ) => Promise<void>;
+  saveProgramVersion: (program: TrainingProgram, changeType: string, summary: string) => Promise<void>;
+  loadProgramVersions: (programId: string) => ReturnType<typeof fetchProgramVersions>;
   updateSet: (sessionExerciseId: string, setId: string, patch: Partial<WorkoutSet>) => void;
   addSet: (sessionExerciseId: string) => Promise<void>;
   removeLastSet: (sessionExerciseId: string) => Promise<void>;
@@ -299,6 +318,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           goals: account.goals,
           programs: account.programs,
           exerciseNotes: account.exerciseNotes,
+          trainingProfile: account.coaching.profile,
+          equipment: account.coaching.equipment,
+          preferences: account.coaching.preferences,
+          trainingMaxes: account.coaching.trainingMaxes,
         });
         const local = loadState();
         setMigrationOffer(Boolean(local && hasUserLocalData(local) && !migrationChoice(user.id)));
@@ -494,6 +517,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     return {
       ready,
       configured: hasSupabaseConfig(),
+      userId: state?.userId ?? null,
       profile,
       exercises: state?.exercises ?? [],
       routines: state?.routines ?? [],
@@ -506,6 +530,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       goals: state?.goals ?? [],
       programs: state?.programs ?? [],
       exerciseNotes: state?.exerciseNotes ?? [],
+      trainingProfile: state?.trainingProfile ?? null,
+      equipment: state?.equipment ?? [],
+      preferences: state?.preferences ?? [],
+      trainingMaxes: state?.trainingMaxes ?? [],
       syncStatus,
       chrome,
       setChrome,
@@ -874,6 +902,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         commitWorkout(next);
         try {
           await updateSessionExercise(sessionId, exerciseId);
+          const fromId = active.exercises.find((session) => session.id === sessionId)?.exerciseId;
+          if (fromId && userIdRef.current) void recordSubstitution(userIdRef.current, fromId, exerciseId).catch(() => undefined);
           setSyncStatus("SYNCED");
         } catch (error) {
           if (!isTransientNetwork(error)) {
@@ -892,6 +922,16 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           setSyncStatus(navigator.onLine ? "PENDING" : "OFFLINE");
         }
       },
+      saveCoachingSetup: async (profile, equipment, preferences, trainingMaxes) => {
+        const current = stateRef.current;
+        if (!current || !userIdRef.current) return;
+        setState({ ...current, trainingProfile: profile, equipment, preferences, trainingMaxes });
+        await saveCoachingSetup(userIdRef.current, profile, equipment, preferences, trainingMaxes);
+      },
+      saveProgramVersion: async (program, changeType, summary) => {
+        await insertProgramVersion(program, changeType, summary);
+      },
+      loadProgramVersions: (programId) => fetchProgramVersions(programId),
       saveExerciseNote: async (exerciseId, body) => {
         const current = stateRef.current;
         if (!current || !userIdRef.current) return;

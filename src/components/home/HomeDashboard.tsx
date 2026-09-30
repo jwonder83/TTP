@@ -8,6 +8,8 @@ import { workoutStats, workoutVolume } from "@/lib/calculations";
 import { addDaysKey, formatVolume, formatWeight, greeting, isAddedLoad, toDateKey, weekdayShort } from "@/lib/format";
 import { coachSessions, resolveConfig } from "@/lib/training/history";
 import { recommendExercise } from "@/lib/training/recommendationEngine";
+import { coachMessages } from "@/lib/coaching/coachMessageEngine";
+import { fatigueScore, recoveryLabel, recoveryReason } from "@/lib/programming/fatigueAnalyzer";
 import { strengthTrend } from "@/lib/training/strengthTrend";
 import { useNow } from "@/hooks/useNow";
 
@@ -19,7 +21,7 @@ function formatWorkoutTime(totalSeconds: number, hoursLabel: (hours: number, min
 }
 
 export function HomeDashboard() {
-  const { profile, exercises, history, activeWorkout, bodyWeights, latestSetPr, routines, trainingConfigs, programs } = useAppState();
+  const { profile, exercises, history, activeWorkout, bodyWeights, latestSetPr, routines, trainingConfigs, programs, trainingProfile, trainingMaxes } = useAppState();
   const { locale, t, exerciseName, displayName } = useI18n();
   const now = useNow(30_000);
   const today = new Date(now);
@@ -58,6 +60,15 @@ export function HomeDashboard() {
         </p>
         <h1 className="text-3xl font-black tracking-tight">{displayName(profile.name)}</h1>
       </header>
+
+      {!trainingProfile ? (
+        <Link href="/onboarding" className="block rounded-3xl bg-[var(--accent)] p-4 font-black text-[var(--accent-ink)]">{t("setupTraining")}</Link>
+      ) : (
+        <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
+          <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">{t("coachFeed")}</p>
+          <CoachHome history={history} program={programs.find((item) => item.status === "active")} trainingMaxes={trainingMaxes} />
+        </section>
+      )}
 
       {activeWorkout ? (
         <Link href="/workout?resume=1" className="block rounded-3xl bg-[var(--accent)] p-4 text-[var(--accent-ink)]">
@@ -171,6 +182,37 @@ export function HomeDashboard() {
           ))
         )}
       </section>
+    </div>
+  );
+}
+
+function CoachHome({
+  history,
+  program,
+  trainingMaxes,
+}: {
+  history: Array<{ exercises: Array<{ exerciseId: string; sets: Array<{ rpe?: number | null; completed: boolean; reps: number; weight: number }> }> }>;
+  program?: { name: string; currentWeek: number; durationWeeks: number; days: Array<{ weekNumber: number; name: string }> };
+  trainingMaxes: Array<{ exerciseId: string; value: number }>;
+}) {
+  const { t } = useI18n();
+  const recentRpe = history.slice(0, 4).flatMap((workout) => workout.exercises.flatMap((session) => session.sets.map((set) => set.rpe).filter((value): value is number => value != null)));
+  const score = fatigueScore({ recentRpe, missRate: 0, readinessLow: false, volumeUp: false, trendDown: false, completionRate: 1 });
+  const label = recoveryLabel(score);
+  const recovery = label === "READY" ? t("recoveryReady") : label === "RECOVERY_NEEDED" ? t("recoveryNeeded") : t("recoveryNormal");
+  const weekDays = program?.days.filter((day) => day.weekNumber === program.currentWeek).length ?? 0;
+  const messages = history.length === 0
+    ? []
+    : coachMessages({ weekDone: Math.min(weekDays, history.length), weekTotal: weekDays || undefined, recovery, kept: recentRpe.some((value) => value >= 9.5) });
+  const reason = recoveryReason({ recentRpe, missRate: 0, readinessLow: false, volumeUp: false, trendDown: false, completionRate: 1 }, label);
+  return (
+    <div className="mt-2 space-y-2">
+      {program ? <p className="font-black">{program.name} · {program.currentWeek} / {program.durationWeeks}</p> : null}
+      <p className="text-sm font-bold">{recovery}</p>
+      {history.length === 0 ? <p className="text-sm text-[var(--muted)]">{t("lowData")}</p> : null}
+      {messages.map((message) => <p key={message.text} className="text-sm text-[var(--muted)]">{message.text}</p>)}
+      <p className="text-xs text-[var(--faint)]">{t("recoveryWhy")}: {reason}</p>
+      {trainingMaxes[0] ? <p className="text-xs text-[var(--muted)]">TM {trainingMaxes[0].value}</p> : null}
     </div>
   );
 }

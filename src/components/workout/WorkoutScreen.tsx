@@ -65,6 +65,7 @@ export function WorkoutScreen() {
   const [effort, setEffort] = useState<{ sessionId: string; setId: string } | null>(null);
   const [why, setWhy] = useState<{ name: string; text: string; last: string } | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [hubTab, setHubTab] = useState<"today" | "program" | "routines">("routines");
   const [replaceSessionId, setReplaceSessionId] = useState<string | null>(null);
   const [restPrompt, setRestPrompt] = useState(false);
   const now = useNow(250);
@@ -373,9 +374,17 @@ export function WorkoutScreen() {
         <p className="text-[11px] font-black tracking-[0.18em] text-[var(--faint)]">{t("navWorkout")}</p>
         <h1 className="text-3xl font-black tracking-tight">{t("workoutTitle")}</h1>
       </header>
+      <div className="grid grid-cols-3 gap-2">
+        <button type="button" onClick={() => setHubTab("today")} className={`h-11 rounded-2xl text-xs font-black ${hubTab === "today" ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg-elevated)]"}`}>{t("workoutTodayTab")}</button>
+        <button type="button" onClick={() => setHubTab("program")} className={`h-11 rounded-2xl text-xs font-black ${hubTab === "program" ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg-elevated)]"}`}>{t("workoutProgramTab")}</button>
+        <button type="button" onClick={() => setHubTab("routines")} className={`h-11 rounded-2xl text-xs font-black ${hubTab === "routines" ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg-elevated)]"}`}>{t("workoutRoutineTab")}</button>
+      </div>
+      {hubTab === "program" ? <a href="/program" className="block h-12 rounded-2xl bg-[var(--bg-elevated)] text-center font-black leading-[3rem]">{t("programTitle")}</a> : null}
+      {hubTab === "today" ? <a href="/program" className="block rounded-3xl border border-[var(--line)] p-4 font-black">{t("coachToday")}</a> : null}
 
       {activeWorkout ? <ResumeCard startedAt={activeWorkout.startedAt} name={activeWorkout.routineName} onResume={() => setMode("live")} onDiscard={() => setDiscardOpen(true)} /> : null}
 
+      {hubTab === "routines" ? <>
       <div className="space-y-3">
         {routines.length === 0 ? (
           <div className="rounded-3xl border border-dashed border-[var(--line)] px-4 py-8 text-center">
@@ -416,6 +425,7 @@ export function WorkoutScreen() {
       >
         {t("workoutCreate")}
       </button>
+      </> : null}
 
       <ConfirmDialog
         open={discardOpen}

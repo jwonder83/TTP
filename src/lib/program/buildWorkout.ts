@@ -46,6 +46,21 @@ export function sessionFromProgramExercise(
       weightOverride: plan.targetWeight ?? fromPercent,
     },
   );
+  if (plan.setType === "normal") {
+    const weight = plan.targetWeight ?? fromPercent ?? session.sets.find((set) => set.setType === "top")?.weight ?? 0;
+    return {
+      ...session,
+      sets: Array.from({ length: Math.max(1, plan.sets) }, (_, index) => ({
+        id: uuid(),
+        setNumber: index + 1,
+        setType: "normal" as const,
+        weight,
+        reps: plan.maxReps,
+        completed: false,
+        targetReps: plan.maxReps,
+      })),
+    };
+  }
   if (fromPercent != null && config.backoffEnabled) {
     const backoff = calculateBackoffWeight(fromPercent, config.backoffPercentage, config.weightIncrement);
     return {

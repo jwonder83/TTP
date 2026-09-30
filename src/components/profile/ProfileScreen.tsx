@@ -241,6 +241,7 @@ export function ProfileScreen() {
         </div>
       </section>
 
+      <a href="/onboarding" className="block h-12 rounded-2xl bg-[var(--bg-elevated)] text-center font-black leading-[3rem]">{t("setupTraining")}</a>
       <InstallButton />
       <section className="space-y-2 rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
         <h2 className="text-sm font-black">{t("exportData")}</h2>
