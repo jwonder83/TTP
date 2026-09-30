@@ -2,19 +2,21 @@ import { NextResponse, type NextRequest } from "next/server";
 import { updateSession, withSessionCookies } from "@/lib/supabase/middleware";
 
 const AUTH_PATHS = new Set(["/login", "/signup"]);
+const PUBLIC_PATHS = new Set(["/login", "/signup", "/auth/callback"]);
 
 export async function middleware(request: NextRequest) {
   const { response, isAuthed, configured } = await updateSession(request);
   const { pathname } = request.nextUrl;
   const isAuthPage = AUTH_PATHS.has(pathname);
+  const isPublic = PUBLIC_PATHS.has(pathname);
 
   if (!configured) {
-    if (isAuthPage) return response;
+    if (isPublic) return response;
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     return withSessionCookies(redirect, response);
   }
 
-  if (!isAuthed && !isAuthPage) {
+  if (!isAuthed && !isPublic) {
     const redirect = NextResponse.redirect(new URL("/login", request.url));
     return withSessionCookies(redirect, response);
   }

@@ -45,6 +45,11 @@ export interface WorkoutSet {
   weight: number;
   reps: number;
   completed: boolean;
+  rpe?: number | null;
+  rir?: number | null;
+  targetReps?: number | null;
+  recommendationWeight?: number | null;
+  recommendationApplied?: boolean;
 }
 
 export interface SessionExercise {
@@ -61,6 +66,12 @@ export interface ActiveWorkout {
   routineName: string;
   startedAt: string;
   exercises: SessionExercise[];
+  readiness?: {
+    energy: "LOW" | "NORMAL" | "HIGH";
+    sleep: "POOR" | "OK" | "GOOD";
+    soreness: "LOW" | "MODERATE" | "HIGH";
+  } | null;
+  recoveryMode?: boolean;
 }
 
 export interface CompletedWorkout {
@@ -109,6 +120,7 @@ export interface Profile {
   compoundRestSec: number;
   accessoryRestSec: number;
   weeklyGoal: number;
+  effortScale: "rpe" | "rir";
 }
 
 export interface PersistedState {

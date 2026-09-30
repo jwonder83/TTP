@@ -4,6 +4,7 @@ import { ensureAccount, fetchProfile } from "@/lib/api/profiles";
 import { fetchRecords } from "@/lib/api/progress";
 import { fetchRoutines } from "@/lib/api/routines";
 import { mergeWorkouts } from "@/lib/api/rows";
+import { fetchGoals, fetchTrainingConfigs } from "@/lib/api/training";
 import {
   fetchActiveWorkout,
   fetchCompletedBetween,
@@ -18,8 +19,8 @@ export async function loadAccount(user: User) {
   await ensureAccount(user);
   const today = new Date();
   const month = monthRange(today.getFullYear(), today.getMonth());
-  const week = rangeFromDateKey(addDaysKey(toDateKey(today), -6), toDateKey(today));
-  const [profile, exercises, routines, active, page, monthWorkouts, weekWorkouts, records, bodyWeights] = await Promise.all([
+  const week = rangeFromDateKey(addDaysKey(toDateKey(today), -13), toDateKey(today));
+  const [profile, exercises, routines, active, page, monthWorkouts, weekWorkouts, records, bodyWeights, trainingConfigs, goals] = await Promise.all([
     fetchProfile(user.id),
     fetchExercises(),
     fetchRoutines(),
@@ -29,6 +30,8 @@ export async function loadAccount(user: User) {
     fetchCompletedBetween(week.startIso, week.endIso),
     fetchRecords(),
     fetchBodyWeights(),
+    fetchTrainingConfigs(),
+    fetchGoals(),
   ]);
 
   return {
@@ -42,5 +45,7 @@ export async function loadAccount(user: User) {
     records: records.records,
     latestSetPr: records.latestSetPr,
     bodyWeights,
+    trainingConfigs,
+    goals,
   };
 }

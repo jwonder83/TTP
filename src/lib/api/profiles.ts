@@ -33,7 +33,7 @@ export async function fetchProfile(userId: string): Promise<Profile> {
     supabase.from("profiles").select("name, height, unit").eq("user_id", userId).maybeSingle(),
     supabase
       .from("user_settings")
-      .select("unit, theme, compound_rest_seconds, accessory_rest_seconds, weekly_goal")
+      .select("unit, theme, compound_rest_seconds, accessory_rest_seconds, weekly_goal, effort_scale")
       .eq("user_id", userId)
       .maybeSingle(),
   ]);
@@ -62,6 +62,7 @@ export async function saveProfile(userId: string, profile: Profile) {
       compound_rest_seconds: Math.min(900, Math.max(15, Math.round(profile.compoundRestSec))),
       accessory_rest_seconds: Math.min(900, Math.max(15, Math.round(profile.accessoryRestSec))),
       weekly_goal: Math.min(14, Math.max(1, Math.round(profile.weeklyGoal))),
+      effort_scale: profile.effortScale === "rir" ? "rir" : "rpe",
     })
     .eq("user_id", userId);
   if (settingsResult.error) throw settingsResult.error;

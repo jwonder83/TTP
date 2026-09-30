@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ChevronDown, ChevronLeft, ChevronUp, Trash2 } from "lucide-react";
 import { AddExerciseSheet } from "@/components/workout/AddExerciseSheet";
 import { useAppState } from "@/components/providers/AppStateProvider";
+import { useI18n } from "@/components/providers/LocaleProvider";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { uuid } from "@/lib/format";
 import type { Routine, RoutineExercise } from "@/lib/types";
 
@@ -14,13 +16,14 @@ interface RoutineBuilderProps {
 
 export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
   const { exercises, profile, saveRoutine } = useAppState();
+  const { t, exerciseName } = useI18n();
   const [name, setName] = useState(initial?.name ?? "");
   const [items, setItems] = useState<RoutineExercise[]>(
     initial ? [...initial.exercises].sort((a, b) => a.orderIndex - b.orderIndex) : [],
   );
   const [pickerOpen, setPickerOpen] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageKey | null>(null);
 
   const move = (index: number, direction: -1 | 1) => {
     const target = index + direction;
@@ -39,15 +42,15 @@ export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
     <div className="space-y-4">
       <button type="button" onClick={onClose} className="inline-flex items-center gap-1 text-sm font-semibold text-[var(--muted)]">
         <ChevronLeft size={18} />
-        Routines
+        {t("builderBack")}
       </button>
-      <h1 className="text-2xl font-black">{initial ? "Edit routine" : "Create routine"}</h1>
+      <h1 className="text-2xl font-black">{initial ? t("builderEdit") : t("builderCreate")}</h1>
       <label className="block text-sm font-semibold">
-        Routine name
+        {t("builderName")}
         <input
           value={name}
           onChange={(event) => setName(event.target.value)}
-          placeholder="PUSH DAY"
+          placeholder={t("builderPlaceholder")}
           className="mt-1 h-12 w-full rounded-2xl bg-[var(--bg-elevated)] px-3 font-bold tracking-wide outline-none ring-1 ring-[var(--line)] focus:ring-[var(--accent)]"
         />
       </label>
@@ -58,16 +61,16 @@ export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
           return (
             <article key={item.id} className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-3">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-black">{exercise?.name ?? "Exercise"}</h2>
+                <h2 className="font-black">{exercise ? exerciseName(exercise.name) : t("exerciseFallback")}</h2>
                 <div className="flex items-center gap-1">
-                  <IconButton label="Move up" onClick={() => move(index, -1)} disabled={index === 0}>
+                  <IconButton label={t("builderMoveUp")} onClick={() => move(index, -1)} disabled={index === 0}>
                     <ChevronUp size={16} />
                   </IconButton>
-                  <IconButton label="Move down" onClick={() => move(index, 1)} disabled={index === items.length - 1}>
+                  <IconButton label={t("builderMoveDown")} onClick={() => move(index, 1)} disabled={index === items.length - 1}>
                     <ChevronDown size={16} />
                   </IconButton>
                   <IconButton
-                    label="Remove exercise"
+                    label={t("builderRemove")}
                     onClick={() => setItems((current) => current.filter((entry) => entry.id !== item.id).map((entry, orderIndex) => ({ ...entry, orderIndex })))}
                   >
                     <Trash2 size={16} />
@@ -75,9 +78,9 @@ export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
                 </div>
               </div>
               <div className="mt-3 grid grid-cols-3 gap-2">
-                <NumberField label="Sets" value={item.defaultSets} min={1} max={10} onChange={(value) => updateItem(item.id, { defaultSets: value })} />
-                <NumberField label="Reps" value={item.defaultReps} min={1} max={30} onChange={(value) => updateItem(item.id, { defaultReps: value })} />
-                <NumberField label="Rest" value={item.restSeconds} min={15} max={600} step={15} onChange={(value) => updateItem(item.id, { restSeconds: value })} />
+                <NumberField label={t("builderSets")} value={item.defaultSets} min={1} max={10} onChange={(value) => updateItem(item.id, { defaultSets: value })} />
+                <NumberField label={t("builderReps")} value={item.defaultReps} min={1} max={30} onChange={(value) => updateItem(item.id, { defaultReps: value })} />
+                <NumberField label={t("builderRest")} value={item.restSeconds} min={15} max={600} step={15} onChange={(value) => updateItem(item.id, { restSeconds: value })} />
               </div>
             </article>
           );
@@ -85,7 +88,7 @@ export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
       </div>
 
       <button type="button" onClick={() => setPickerOpen(true)} className="h-12 w-full rounded-2xl border border-dashed border-[var(--line-strong)] font-bold">
-        Add exercise
+        {t("builderAdd")}
       </button>
       <button
         type="button"
@@ -102,15 +105,15 @@ export function RoutineBuilder({ initial, onClose }: RoutineBuilderProps) {
             });
             onClose();
           } catch {
-            setError("Could not save this routine.");
+            setError("builderError");
             setSaving(false);
           }
         }}
         className="h-14 w-full rounded-2xl bg-[var(--accent)] font-black text-[var(--accent-ink)] disabled:opacity-40"
       >
-        {saving ? "Saving..." : "Save routine"}
+        {saving ? t("builderSaving") : t("builderSave")}
       </button>
-      {error ? <p className="text-center text-sm font-semibold text-[var(--danger)]">{error}</p> : null}
+      {error ? <p className="text-center text-sm font-semibold text-[var(--danger)]">{t(error)}</p> : null}
 
       <AddExerciseSheet
         open={pickerOpen}
@@ -177,7 +180,7 @@ function NumberField({
 }) {
   return (
     <label className="text-[11px] font-bold tracking-wide text-[var(--faint)]">
-      {label.toUpperCase()}
+      {label}
       <input
         inputMode="numeric"
         value={value}

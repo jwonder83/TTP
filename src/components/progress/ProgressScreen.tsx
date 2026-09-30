@@ -1,11 +1,12 @@
 "use client";
 
 import dynamic from "next/dynamic";
+import { GoalsPanel, ReportPanel, StrengthPanel, VolumePanel } from "@/components/training/CoachPanels";
 import { useEffect, useMemo, useState } from "react";
 import { useAppState } from "@/components/providers/AppStateProvider";
+import { useI18n } from "@/components/providers/LocaleProvider";
 import { bestEstimated1RM, recordValue, workingSets } from "@/lib/calculations";
 import {
-  RECORD_LABEL,
   cx,
   formatRoundedWeight,
   formatVolume,
@@ -13,6 +14,7 @@ import {
   kgToDisplay,
   toDateKey,
 } from "@/lib/format";
+import type { MessageKey } from "@/lib/i18n/messages";
 import type { CompletedWorkout, RecordType } from "@/lib/types";
 
 const ProgressChart = dynamic(() => import("@/components/progress/ProgressChart").then((mod) => mod.ProgressChart), {
@@ -22,11 +24,11 @@ const ProgressChart = dynamic(() => import("@/components/progress/ProgressChart"
 const FEATURED = ["Bench Press", "Squat", "Deadlift", "Overhead Press", "Weighted Pull Up", "Weighted Dip"];
 const PERIODS = ["1M", "3M", "6M", "1Y", "ALL"] as const;
 const METRICS = [
-  { id: "e1rm", label: "Estimated 1RM" },
-  { id: "max", label: "Max Weight" },
-  { id: "volume", label: "Volume" },
-  { id: "reps", label: "Reps" },
-] as const;
+  { id: "e1rm", label: "metric1rm" },
+  { id: "max", label: "metricWeight" },
+  { id: "volume", label: "metricVolume" },
+  { id: "reps", label: "metricReps" },
+] as const satisfies ReadonlyArray<{ id: string; label: MessageKey }>;
 
 type Period = (typeof PERIODS)[number];
 type Metric = (typeof METRICS)[number]["id"];
@@ -43,6 +45,8 @@ function periodStart(period: Period) {
 
 export function ProgressScreen() {
   const { exercises, records, profile, loadExerciseHistory } = useAppState();
+  const { t, exerciseName, recordLabel } = useI18n();
+  const [tab, setTab] = useState<"overview" | "strength" | "volume" | "report" | "goals">("overview");
   const [exerciseId, setExerciseId] = useState("");
   const [period, setPeriod] = useState<Period>("3M");
   const [metric, setMetric] = useState<Metric>("e1rm");
@@ -97,9 +101,22 @@ export function ProgressScreen() {
 
   return (
     <div className="space-y-4">
-      <header>
-        <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">PROGRESS</p>
-        <h1 className="text-3xl font-black tracking-tight">{exercise?.name ?? "Exercise"}</h1>
+      <div className="grid grid-cols-5 rounded-2xl bg-[var(--bg-muted)] p-1 text-[10px] font-black">
+        {(["overview", "strength", "volume", "report", "goals"] as const).map((item) => (
+          <button key={item} type="button" onClick={() => setTab(item)} className={cx("h-9 rounded-xl", tab === item ? "bg-[var(--bg-elevated)]" : "text-[var(--muted)]")}>
+            {t(item === "overview" ? "progressOverview" : item === "strength" ? "progressStrength" : item === "volume" ? "progressVolume" : item === "report" ? "progressReport" : "progressGoals")}
+          </button>
+        ))}
+      </div>
+      {tab === "strength" ? <StrengthPanel /> : null}
+      {tab === "volume" ? <VolumePanel /> : null}
+      {tab === "report" ? <ReportPanel /> : null}
+      {tab === "goals" ? <GoalsPanel /> : null}
+      {tab === "overview" ? (
+        <>
+        <header>
+        <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">{t("navProgress")}</p>
+        <h1 className="text-3xl font-black tracking-tight">{exercise ? exerciseName(exercise.name) : t("progressFallback")}</h1>
       </header>
 
       <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1">
@@ -113,7 +130,7 @@ export function ProgressScreen() {
               item.id === exerciseId ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg-elevated)] text-[var(--muted)]",
             )}
           >
-            {item.name}
+            {exerciseName(item.name)}
           </button>
         ))}
       </div>
@@ -129,7 +146,7 @@ export function ProgressScreen() {
               metric === item.id ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "text-[var(--muted)]",
             )}
           >
-            {item.label === "Estimated 1RM" ? "1RM" : item.label === "Max Weight" ? "Weight" : item.label}
+            {t(item.label)}
           </button>
         ))}
       </div>
@@ -138,7 +155,7 @@ export function ProgressScreen() {
         {series === null ? (
           <div className="h-56 animate-pulse rounded-2xl bg-[var(--bg-muted)]" />
         ) : (
-          <ProgressChart points={points} suffix={metric === "reps" ? "reps" : profile.unit} />
+          <ProgressChart points={points} suffix={metric === "reps" ? t("chartReps") : profile.unit} />
         )}
       </section>
 
@@ -153,13 +170,13 @@ export function ProgressScreen() {
               period === item ? "bg-[var(--bg-elevated)] text-[var(--text)]" : "text-[var(--muted)]",
             )}
           >
-            {item}
+            {item === "ALL" ? t("periodAll") : item}
           </button>
         ))}
       </div>
 
       <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-        <h2 className="text-sm font-black tracking-wide">{(exercise?.name ?? "EXERCISE").toUpperCase()}</h2>
+        <h2 className="text-sm font-black tracking-wide">{(exercise ? exerciseName(exercise.name) : t("progressFallback")).toUpperCase()}</h2>
         <dl className="mt-3 space-y-3">
           {recordTypes.map((type) => {
             const record = recordValue(records, exerciseId, type);
@@ -172,13 +189,15 @@ export function ProgressScreen() {
                   : `${formatWeight(record.value, profile.unit)} ${profile.unit}`;
             return (
               <div key={type} className="flex items-center justify-between">
-                <dt className="text-sm text-[var(--muted)]">{RECORD_LABEL[type]}</dt>
+                <dt className="text-sm text-[var(--muted)]">{recordLabel(type)}</dt>
                 <dd className="font-black tabular-nums">{value}</dd>
               </div>
             );
           })}
         </dl>
       </section>
+        </>
+      ) : null}
     </div>
   );
 }

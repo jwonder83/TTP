@@ -1,11 +1,16 @@
 import { createClient } from "@/lib/supabase/client";
 
+const PRODUCTION_AUTH_CALLBACK = "https://ttp-blond-five.vercel.app/auth/callback";
+
 export async function signUp(input: { name: string; email: string; password: string }) {
   const supabase = createClient();
   const { data, error } = await supabase.auth.signUp({
     email: input.email.trim(),
     password: input.password,
-    options: { data: { name: input.name.trim() } },
+    options: {
+      emailRedirectTo: PRODUCTION_AUTH_CALLBACK,
+      data: { name: input.name.trim() },
+    },
   });
   if (error) throw error;
   return { session: data.session, user: data.user };

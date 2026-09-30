@@ -5,12 +5,14 @@ import { currentUser, signOut as authSignOut } from "@/lib/api/auth";
 import { saveBodyWeight } from "@/lib/api/bodyWeight";
 import { loadAccount } from "@/lib/api/bootstrap";
 import { friendlyError, logError } from "@/lib/api/errors";
+import type { MessageKey } from "@/lib/i18n/messages";
 import { insertCustomExercise } from "@/lib/api/exercises";
 import { hasUserLocalData, importLocalState } from "@/lib/api/migration";
 import { saveProfile } from "@/lib/api/profiles";
 import { fetchRecords } from "@/lib/api/progress";
 import { deleteRoutine as removeRoutine, saveRoutine as persistRoutine } from "@/lib/api/routines";
 import { mergeWorkouts } from "@/lib/api/rows";
+import { saveGoal, saveReadiness, saveRecommendation, saveTrainingConfig } from "@/lib/api/training";
 import {
   cancelWorkout,
   completeWorkout,
@@ -45,7 +47,10 @@ import type {
   Routine,
   WorkoutSet,
 } from "@/lib/types";
-import { blankSet, createActiveWorkout, createSessionExercise } from "@/lib/workout-plan";
+import { coachSessions, resolveConfig } from "@/lib/training/history";
+import { recommendExercise } from "@/lib/training/recommendationEngine";
+import { blankSet, createActiveWorkout, createSessionExercise, type ActivePlanOptions } from "@/lib/workout-plan";
+import type { TrainingConfig, TrainingGoal } from "@/lib/training/types";
 
 interface RemoteState {
   userId: string;
@@ -57,6 +62,8 @@ interface RemoteState {
   bodyWeights: BodyWeightEntry[];
   records: PersonalRecord[];
   latestSetPr: RecentPr | null;
+  trainingConfigs: TrainingConfig[];
+  goals: TrainingGoal[];
 }
 
 interface AppStateContextValue {
@@ -70,9 +77,11 @@ interface AppStateContextValue {
   bodyWeights: BodyWeightEntry[];
   records: PersonalRecord[];
   latestSetPr: RecentPr | null;
+  trainingConfigs: TrainingConfig[];
+  goals: TrainingGoal[];
   chrome: ChromeMode;
   setChrome: (chrome: ChromeMode) => void;
-  saveError: string | null;
+  saveError: MessageKey | null;
   historyHasMore: boolean;
   loadMoreHistory: () => Promise<void>;
   ensureMonth: (year: number, month: number) => Promise<void>;
@@ -86,7 +95,9 @@ interface AppStateContextValue {
   addCustomExercise: (input: Omit<Exercise, "id" | "isCustom">) => Promise<string>;
   saveRoutine: (routine: Routine) => Promise<void>;
   deleteRoutine: (routineId: string) => Promise<void>;
-  startWorkout: (routineId: string) => Promise<boolean>;
+  startWorkout: (routineId: string, options?: ActivePlanOptions) => Promise<boolean>;
+  saveTrainingConfig: (config: TrainingConfig) => Promise<void>;
+  saveGoal: (goal: TrainingGoal) => Promise<void>;
   updateSet: (sessionExerciseId: string, setId: string, patch: Partial<WorkoutSet>) => void;
   addSet: (sessionExerciseId: string) => Promise<void>;
   removeLastSet: (sessionExerciseId: string) => Promise<void>;
@@ -105,6 +116,7 @@ const EMPTY_PROFILE: Profile = {
   compoundRestSec: 180,
   accessoryRestSec: 90,
   weeklyGoal: 4,
+  effortScale: "rpe",
 };
 
 const AppStateContext = createContext<AppStateContextValue | null>(null);
@@ -131,7 +143,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<RemoteState | null>(null);
   const [ready, setReady] = useState(false);
   const [chrome, setChrome] = useState<ChromeMode>("default");
-  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<MessageKey | null>(null);
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [migrationOffer, setMigrationOffer] = useState(false);
   const [migrationBusy, setMigrationBusy] = useState(false);
@@ -249,6 +261,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           bodyWeights: account.bodyWeights,
           records: account.records,
           latestSetPr: account.latestSetPr,
+          trainingConfigs: account.trainingConfigs,
+          goals: account.goals,
         });
         const local = loadState();
         setMigrationOffer(Boolean(local && hasUserLocalData(local) && !migrationChoice(user.id)));
@@ -434,6 +448,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       bodyWeights: state?.bodyWeights ?? [],
       records: state?.records ?? [],
       latestSetPr: state?.latestSetPr ?? null,
+      trainingConfigs: state?.trainingConfigs ?? [],
+      goals: state?.goals ?? [],
       chrome,
       setChrome,
       saveError,
@@ -518,21 +534,78 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           report("routine-delete", error);
         }
       },
-      startWorkout: async (routineId) => {
+      startWorkout: async (routineId, options) => {
         const current = stateRef.current;
         if (!current || workoutRef.current || !userIdRef.current) return false;
         const routine = current.routines.find((item) => item.id === routineId);
         if (!routine) return false;
-        const activeWorkout = createActiveWorkout(routine, current.exercises, current.history);
+        const activeWorkout = createActiveWorkout(routine, current.exercises, current.history, new Date(), {
+          ...options,
+          configs: current.trainingConfigs,
+        });
         commitWorkout(activeWorkout);
         try {
           await persistActiveWorkout(userIdRef.current, activeWorkout);
+          if (options?.readiness) await saveReadiness(userIdRef.current, activeWorkout.id, options.readiness);
+          try {
+            const cleared = current.trainingConfigs.filter((config) => config.pendingDeload);
+            if (cleared.length > 0) {
+              const nextConfigs = current.trainingConfigs.map((config) => (config.pendingDeload ? { ...config, pendingDeload: false } : config));
+              setState((snapshot) => (snapshot ? { ...snapshot, trainingConfigs: nextConfigs } : snapshot));
+              await Promise.all(cleared.map((config) => saveTrainingConfig(userIdRef.current, { ...config, pendingDeload: false })));
+            }
+            await Promise.all(
+              routine.exercises.map(async (item) => {
+                const exercise = current.exercises.find((entry) => entry.id === item.exerciseId);
+                if (!exercise) return;
+                const recommendation = recommendExercise({
+                  config: resolveConfig(current.trainingConfigs, exercise, item.defaultReps),
+                  sessionsNewestFirst: coachSessions(current.history, exercise.id),
+                  readiness: options?.readiness,
+                });
+                if (recommendation.status === "NO_HISTORY") return;
+                await saveRecommendation(userIdRef.current, activeWorkout.id, recommendation, options?.useRecovery ? false : null);
+              }),
+            );
+          } catch (error) {
+            report("recommendation", error);
+          }
           setSaveError(null);
           return true;
         } catch (error) {
           commitWorkout(null);
           report("workout-start", error);
           return false;
+        }
+      },
+      saveTrainingConfig: async (config) => {
+        const current = stateRef.current;
+        if (!current || !userIdRef.current) return;
+        const next = current.trainingConfigs.some((item) => item.exerciseId === config.exerciseId)
+          ? current.trainingConfigs.map((item) => (item.exerciseId === config.exerciseId ? config : item))
+          : [...current.trainingConfigs, config];
+        setState({ ...current, trainingConfigs: next });
+        try {
+          await saveTrainingConfig(userIdRef.current, config);
+          setSaveError(null);
+        } catch (error) {
+          setState((snapshot) => (snapshot ? { ...snapshot, trainingConfigs: current.trainingConfigs } : snapshot));
+          report("training-config", error);
+        }
+      },
+      saveGoal: async (goal) => {
+        const current = stateRef.current;
+        if (!current || !userIdRef.current) return;
+        const next = current.goals.some((item) => item.id === goal.id)
+          ? current.goals.map((item) => (item.id === goal.id ? goal : item))
+          : [...current.goals, goal];
+        setState({ ...current, goals: next });
+        try {
+          await saveGoal(userIdRef.current, goal);
+          setSaveError(null);
+        } catch (error) {
+          setState((snapshot) => (snapshot ? { ...snapshot, goals: current.goals } : snapshot));
+          report("goal", error);
         }
       },
       updateSet: (sessionExerciseId, setId, patch) => {
@@ -612,6 +685,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           },
           exercise,
           current.history,
+          { configs: current.trainingConfigs },
         );
         const previous = workout;
         const next = { ...workout, exercises: [...workout.exercises, session] };

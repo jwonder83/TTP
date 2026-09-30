@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useState } from "react";
 import { useAppState } from "@/components/providers/AppStateProvider";
+import { useI18n } from "@/components/providers/LocaleProvider";
 import { cx, displayToKg, formatWeight, kgToDisplay, shortMonthDay, toDateKey } from "@/lib/format";
 import type { ThemePreference, Unit } from "@/lib/types";
 
@@ -12,6 +13,7 @@ const ProgressChart = dynamic(() => import("@/components/progress/ProgressChart"
 
 export function ProfileScreen() {
   const { profile, bodyWeights, updateProfile, logBodyWeight, signOut } = useAppState();
+  const { locale, t, displayName } = useI18n();
   const latest = [...bodyWeights].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
   const [weightText, setWeightText] = useState(latest ? String(kgToDisplay(latest.weight, profile.unit)) : "");
   const points = [...bodyWeights]
@@ -24,19 +26,19 @@ export function ProfileScreen() {
   return (
     <div className="space-y-4">
       <header>
-        <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">PROFILE</p>
-        <h1 className="text-3xl font-black tracking-tight">{profile.name}</h1>
+        <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">{t("profileTitle")}</p>
+        <h1 className="text-3xl font-black tracking-tight">{displayName(profile.name)}</h1>
       </header>
 
       <section className="space-y-3 rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-        <Field label="Name">
+        <Field label={t("profileName")}>
           <input
             value={profile.name}
             onChange={(event) => updateProfile({ name: event.target.value })}
             className="h-12 w-full rounded-2xl bg-[var(--bg)] px-3 font-bold outline-none"
           />
         </Field>
-        <Field label="Height (cm)">
+        <Field label={t("profileHeight")}>
           <input
             inputMode="decimal"
             value={profile.heightCm}
@@ -47,7 +49,7 @@ export function ProfileScreen() {
             className="h-12 w-full rounded-2xl bg-[var(--bg)] px-3 font-bold outline-none"
           />
         </Field>
-        <Field label="Unit">
+        <Field label={t("profileUnit")}>
           <div className="grid grid-cols-2 gap-2">
             {(["kg", "lb"] as Unit[]).map((unit) => (
               <button
@@ -70,7 +72,7 @@ export function ProfileScreen() {
       </section>
 
       <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-        <h2 className="text-sm font-black tracking-wide">BODY WEIGHT</h2>
+        <h2 className="text-sm font-black tracking-wide">{t("profileBody")}</h2>
         <form
           className="mt-3 flex gap-2"
           onSubmit={(event) => {
@@ -84,18 +86,18 @@ export function ProfileScreen() {
             inputMode="decimal"
             value={weightText}
             onChange={(event) => setWeightText(event.target.value)}
-            aria-label="Body weight"
+            aria-label={t("profileWeightAria")}
             className="h-12 flex-1 rounded-2xl bg-[var(--bg)] px-3 text-center text-lg font-black tabular-nums outline-none"
           />
           <button type="submit" className="h-12 rounded-2xl bg-[var(--accent)] px-4 font-black text-[var(--accent-ink)]">
-            Save
+            {t("profileSave")}
           </button>
         </form>
         <div className="mt-3">
           {bodyWeights.length === 0 ? (
             <p className="py-6 text-center text-sm text-[var(--muted)]">
-              <span className="block font-black tracking-wide text-[var(--text)]">NO BODY WEIGHT DATA</span>
-              Add weight below.
+              <span className="block font-black tracking-wide text-[var(--text)]">{t("profileNoWeight")}</span>
+              {t("profileAddWeight")}
             </p>
           ) : (
             <ProgressChart points={points} suffix={profile.unit} />
@@ -107,7 +109,7 @@ export function ProfileScreen() {
             .slice(0, 4)
             .map((entry) => (
               <li key={entry.id} className="flex items-center justify-between text-sm">
-                <span className="font-bold tracking-wide text-[var(--muted)]">{shortMonthDay(entry.date)}</span>
+                <span className="font-bold tracking-wide text-[var(--muted)]">{shortMonthDay(entry.date, locale)}</span>
                 <span className="font-black tabular-nums">
                   {formatWeight(entry.weight, profile.unit)} {profile.unit}
                 </span>
@@ -117,9 +119,9 @@ export function ProfileScreen() {
       </section>
 
       <section className="space-y-3 rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-        <h2 className="text-sm font-black tracking-wide">REST TIMER</h2>
+        <h2 className="text-sm font-black tracking-wide">{t("profileRest")}</h2>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="Compound (sec)">
+          <Field label={t("profileCompound")}>
             <input
               inputMode="numeric"
               value={profile.compoundRestSec}
@@ -130,7 +132,7 @@ export function ProfileScreen() {
               className="h-12 w-full rounded-2xl bg-[var(--bg)] px-3 text-center font-bold outline-none"
             />
           </Field>
-          <Field label="Accessory (sec)">
+          <Field label={t("profileAccessory")}>
             <input
               inputMode="numeric"
               value={profile.accessoryRestSec}
@@ -145,7 +147,26 @@ export function ProfileScreen() {
       </section>
 
       <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-        <h2 className="text-sm font-black tracking-wide">THEME</h2>
+        <h2 className="text-sm font-black tracking-wide">{t("effortScale")}</h2>
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {(["rpe", "rir"] as const).map((scale) => (
+            <button
+              key={scale}
+              type="button"
+              onClick={() => updateProfile({ effortScale: scale })}
+              className={cx(
+                "h-12 rounded-2xl text-sm font-black",
+                profile.effortScale === scale ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg)]",
+              )}
+            >
+              {scale.toUpperCase()}
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
+        <h2 className="text-sm font-black tracking-wide">{t("profileTheme")}</h2>
         <div className="mt-3 grid grid-cols-3 gap-2">
           {(["dark", "light", "system"] as ThemePreference[]).map((theme) => (
             <button
@@ -153,11 +174,11 @@ export function ProfileScreen() {
               type="button"
               onClick={() => updateProfile({ theme })}
               className={cx(
-                "h-12 rounded-2xl text-sm font-black capitalize",
+                "h-12 rounded-2xl text-sm font-black",
                 profile.theme === theme ? "bg-[var(--accent)] text-[var(--accent-ink)]" : "bg-[var(--bg)]",
               )}
             >
-              {theme}
+              {t(theme === "dark" ? "themeDark" : theme === "light" ? "themeLight" : "themeSystem")}
             </button>
           ))}
         </div>
@@ -168,7 +189,7 @@ export function ProfileScreen() {
         onClick={() => void signOut()}
         className="h-12 w-full rounded-2xl bg-[var(--bg-elevated)] font-bold"
       >
-        Log out
+        {t("profileLogout")}
       </button>
     </div>
   );
@@ -177,7 +198,7 @@ export function ProfileScreen() {
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block text-[11px] font-bold tracking-wide text-[var(--faint)]">
-      {label.toUpperCase()}
+      {label}
       <div className="mt-1">{children}</div>
     </label>
   );

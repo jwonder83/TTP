@@ -4,17 +4,20 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Dumbbell, House, TrendingUp, UserRound } from "lucide-react";
 import { cx } from "@/lib/format";
+import { useI18n } from "@/components/providers/LocaleProvider";
+import type { MessageKey } from "@/lib/i18n/messages";
 
 const TABS = [
-  { href: "/", label: "HOME", icon: House },
-  { href: "/history", label: "HISTORY", icon: CalendarDays },
-  { href: "/workout", label: "WORKOUT", icon: Dumbbell, center: true },
-  { href: "/progress", label: "PROGRESS", icon: TrendingUp },
-  { href: "/profile", label: "PROFILE", icon: UserRound },
-] as const;
+  { href: "/", label: "navHome", icon: House },
+  { href: "/history", label: "navHistory", icon: CalendarDays },
+  { href: "/workout", label: "navWorkout", icon: Dumbbell, center: true },
+  { href: "/progress", label: "navProgress", icon: TrendingUp },
+  { href: "/profile", label: "navProfile", icon: UserRound },
+] as const satisfies ReadonlyArray<{ href: string; label: MessageKey; icon: typeof House; center?: boolean }>;
 
 export function BottomNavigation() {
   const pathname = usePathname();
+  const { t } = useI18n();
 
   return (
     <div className="fixed bottom-0 left-1/2 z-40 w-full max-w-[430px] -translate-x-1/2">
@@ -33,7 +36,7 @@ export function BottomNavigation() {
                 >
                   <Icon size={26} strokeWidth={2.4} />
                 </span>
-                <span className="mt-1 text-[10px] font-black tracking-wide text-[var(--accent-text)]">{tab.label}</span>
+                <span className="mt-1 text-[10px] font-black tracking-wide text-[var(--accent-text)]">{t(tab.label)}</span>
               </Link>
             );
           }
@@ -48,7 +51,7 @@ export function BottomNavigation() {
               )}
             >
               <Icon size={21} strokeWidth={active ? 2.5 : 2} />
-              {tab.label}
+              {t(tab.label)}
             </Link>
           );
         })}

@@ -3,7 +3,9 @@
 import { useMemo, useState } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { useAppState } from "@/components/providers/AppStateProvider";
-import { CATEGORY_LABEL, CATEGORY_ORDER, EQUIPMENT_LABEL } from "@/lib/format";
+import { useI18n } from "@/components/providers/LocaleProvider";
+import { CATEGORY_ORDER } from "@/lib/format";
+import type { MessageKey } from "@/lib/i18n/messages";
 import type { Equipment, ExerciseCategory, ExerciseKind } from "@/lib/types";
 
 interface AddExerciseSheetProps {
@@ -17,6 +19,7 @@ const EQUIPMENT: Equipment[] = ["barbell", "dumbbell", "cable", "machine", "body
 
 export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: AddExerciseSheetProps) {
   const { exercises, addCustomExercise } = useAppState();
+  const { t, exerciseName, categoryLabel, equipmentLabel } = useI18n();
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
   const [name, setName] = useState("");
@@ -24,16 +27,17 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
   const [equipment, setEquipment] = useState<Equipment>("barbell");
   const [kind, setKind] = useState<ExerciseKind>("accessory");
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<MessageKey | null>(null);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
     return exercises.filter((exercise) => {
       if (excludeIds.includes(exercise.id)) return false;
       if (!needle) return true;
-      return exercise.name.toLowerCase().includes(needle);
+      const label = exerciseName(exercise.name).toLowerCase();
+      return exercise.name.toLowerCase().includes(needle) || label.includes(needle);
     });
-  }, [exercises, excludeIds, query]);
+  }, [exerciseName, exercises, excludeIds, query]);
 
   const close = () => {
     setCreating(false);
@@ -43,7 +47,7 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
   };
 
   return (
-    <Sheet open={open} title={creating ? "Custom exercise" : "Add exercise"} onClose={close}>
+    <Sheet open={open} title={creating ? t("sheetCustom") : t("sheetAdd")} onClose={close}>
       {creating ? (
         <form
           className="space-y-3 pb-2"
@@ -58,44 +62,44 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
               onPick(id, kind);
               close();
             } catch {
-              setError("Could not save this exercise.");
+              setError("sheetError");
             } finally {
               setSaving(false);
             }
           }}
         >
           <label className="block text-sm font-semibold">
-            Name
+            {t("sheetName")}
             <input
               value={name}
               onChange={(event) => setName(event.target.value)}
               className="mt-1 h-12 w-full rounded-2xl bg-[var(--bg-muted)] px-3 outline-none focus:ring-2 focus:ring-[var(--accent)]"
-              placeholder="Pause Squat"
+              placeholder={t("sheetNamePlaceholder")}
             />
           </label>
           <div className="grid grid-cols-2 gap-2">
-            <Select label="Category" value={category} onChange={(value) => setCategory(value as ExerciseCategory)}>
+            <Select label={t("sheetCategory")} value={category} onChange={(value) => setCategory(value as ExerciseCategory)}>
               {CATEGORY_ORDER.map((item) => (
                 <option key={item} value={item}>
-                  {CATEGORY_LABEL[item]}
+                  {categoryLabel(item)}
                 </option>
               ))}
             </Select>
-            <Select label="Equipment" value={equipment} onChange={(value) => setEquipment(value as Equipment)}>
+            <Select label={t("sheetEquipment")} value={equipment} onChange={(value) => setEquipment(value as Equipment)}>
               {EQUIPMENT.map((item) => (
                 <option key={item} value={item}>
-                  {EQUIPMENT_LABEL[item]}
+                  {equipmentLabel(item)}
                 </option>
               ))}
             </Select>
           </div>
-          <Select label="Type" value={kind} onChange={(value) => setKind(value as ExerciseKind)}>
-            <option value="compound">Compound · 180s rest</option>
-            <option value="accessory">Accessory · 90s rest</option>
+          <Select label={t("sheetType")} value={kind} onChange={(value) => setKind(value as ExerciseKind)}>
+            <option value="compound">{t("sheetCompound")}</option>
+            <option value="accessory">{t("sheetAccessory")}</option>
           </Select>
-          {error ? <p className="text-sm font-semibold text-[var(--danger)]">{error}</p> : null}
+          {error ? <p className="text-sm font-semibold text-[var(--danger)]">{t(error)}</p> : null}
           <button type="submit" disabled={saving} className="h-12 w-full rounded-2xl bg-[var(--accent)] font-black text-[var(--accent-ink)] disabled:opacity-40">
-            {saving ? "Saving..." : "Save exercise"}
+            {saving ? t("sheetSaving") : t("sheetSave")}
           </button>
         </form>
       ) : (
@@ -103,7 +107,7 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
           <input
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search"
+            placeholder={t("sheetSearch")}
             className="h-12 w-full rounded-2xl bg-[var(--bg-muted)] px-3 outline-none focus:ring-2 focus:ring-[var(--accent)]"
           />
           <div className="mt-3 space-y-4">
@@ -112,7 +116,7 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
               if (group.length === 0) return null;
               return (
                 <section key={item}>
-                  <h3 className="text-[11px] font-black tracking-wide text-[var(--faint)]">{CATEGORY_LABEL[item].toUpperCase()}</h3>
+                  <h3 className="text-[11px] font-black tracking-wide text-[var(--faint)]">{categoryLabel(item)}</h3>
                   <div className="mt-2 space-y-1">
                     {group.map((exercise) => (
                       <button
@@ -124,8 +128,8 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
                         }}
                         className="flex h-12 w-full items-center justify-between rounded-2xl px-2 text-left font-semibold active:bg-[var(--bg-muted)]"
                       >
-                        {exercise.name}
-                        {exercise.isCustom ? <span className="text-[10px] text-[var(--faint)]">CUSTOM</span> : null}
+                        {exerciseName(exercise.name)}
+                        {exercise.isCustom ? <span className="text-[10px] text-[var(--faint)]">{t("sheetCustomBadge")}</span> : null}
                       </button>
                     ))}
                   </div>
@@ -134,7 +138,7 @@ export function AddExerciseSheet({ open, onClose, onPick, excludeIds = [] }: Add
             })}
           </div>
           <button type="button" onClick={() => setCreating(true)} className="mt-4 h-12 w-full rounded-2xl bg-[var(--bg-muted)] font-bold">
-            Create custom exercise
+            {t("sheetCreateCustom")}
           </button>
         </div>
       )}

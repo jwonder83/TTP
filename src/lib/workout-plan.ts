@@ -1,6 +1,9 @@
 import { sessionsForExercise } from "@/lib/calculations";
 import { roundTo, uuid, weightStep } from "@/lib/format";
 import { recommendNextLoad } from "@/lib/recommendations";
+import { coachSessions, resolveConfig } from "@/lib/training/history";
+import { recommendExercise } from "@/lib/training/recommendationEngine";
+import type { ReadinessInput, TrainingConfig } from "@/lib/training/types";
 import type {
   ActiveWorkout,
   CompletedWorkout,
@@ -70,26 +73,71 @@ export function createSessionExercise(
   routineExercise: RoutineExercise,
   exercise: Exercise,
   history: CompletedWorkout[],
+  options?: {
+    configs?: TrainingConfig[];
+    readiness?: ReadinessInput | null;
+    useRecovery?: boolean;
+    weightOverride?: number | null;
+  },
 ): SessionExercise {
-  const previous = sessionsForExercise(history, exercise.id);
-  const recommendation = recommendNextLoad(
-    previous.map((session) => ({ weight: session.key.weight, reps: session.key.reps })),
+  const config = resolveConfig(options?.configs, exercise, routineExercise.defaultReps);
+  const recommendation = recommendExercise({
+    config,
+    sessionsNewestFirst: coachSessions(history, exercise.id),
+    readiness: options?.readiness,
+  });
+  const legacy = recommendNextLoad(
+    sessionsForExercise(history, exercise.id).map((session) => ({ weight: session.key.weight, reps: session.key.reps })),
     routineExercise.defaultReps,
   );
-  const targetWeight = recommendation?.weight ?? fallbackWeight(exercise.equipment);
+  const suggested =
+    options?.useRecovery && recommendation.recoveryWeight != null
+      ? recommendation.recoveryWeight
+      : recommendation.recommendedWeight;
+  const targetWeight = options?.weightOverride ?? suggested ?? legacy?.weight ?? fallbackWeight(exercise.equipment);
+  const targetReps = recommendation.recommendedReps ?? routineExercise.defaultReps;
+  const applied = options?.weightOverride == null && suggested != null && targetWeight === suggested;
+  const sets = buildPlannedSets({
+    targetWeight,
+    targetReps,
+    setCount: routineExercise.defaultSets,
+    equipment: exercise.equipment,
+  }).map((set) => {
+    if (set.setType === "backoff" && recommendation.backoffWeight != null && applied) {
+      return {
+        ...set,
+        weight: recommendation.backoffWeight,
+        reps: recommendation.backoffReps ?? set.reps,
+        recommendationWeight: recommendation.backoffWeight,
+        recommendationApplied: true,
+        targetReps: recommendation.backoffReps ?? set.reps,
+      };
+    }
+    if (set.setType === "top" || set.setType === "normal") {
+      return {
+        ...set,
+        recommendationWeight: recommendation.recommendedWeight,
+        recommendationApplied: applied,
+        targetReps,
+      };
+    }
+    return set;
+  });
 
   return {
     id: uuid(),
     exerciseId: exercise.id,
     orderIndex: routineExercise.orderIndex,
     restSeconds: routineExercise.restSeconds,
-    sets: buildPlannedSets({
-      targetWeight,
-      targetReps: routineExercise.defaultReps,
-      setCount: routineExercise.defaultSets,
-      equipment: exercise.equipment,
-    }),
+    sets,
   };
+}
+
+export interface ActivePlanOptions {
+  configs?: TrainingConfig[];
+  readiness?: ReadinessInput | null;
+  useRecovery?: boolean;
+  weightOverrides?: Record<string, number>;
 }
 
 export function createActiveWorkout(
@@ -97,6 +145,7 @@ export function createActiveWorkout(
   exercises: Exercise[],
   history: CompletedWorkout[],
   now = new Date(),
+  options?: ActivePlanOptions,
 ): ActiveWorkout {
   const byId = new Map(exercises.map((exercise) => [exercise.id, exercise]));
   const sessionExercises = [...routine.exercises]
@@ -104,7 +153,12 @@ export function createActiveWorkout(
     .flatMap((routineExercise) => {
       const exercise = byId.get(routineExercise.exerciseId);
       if (!exercise) return [];
-      return [createSessionExercise(routineExercise, exercise, history)];
+      return [createSessionExercise(routineExercise, exercise, history, {
+        configs: options?.configs,
+        readiness: options?.readiness,
+        useRecovery: options?.useRecovery,
+        weightOverride: options?.weightOverrides?.[exercise.id] ?? null,
+      })];
     });
 
   return {
@@ -113,6 +167,8 @@ export function createActiveWorkout(
     routineName: routine.name,
     startedAt: now.toISOString(),
     exercises: sessionExercises,
+    readiness: options?.readiness ?? null,
+    recoveryMode: Boolean(options?.useRecovery),
   };
 }
 

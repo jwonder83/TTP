@@ -91,22 +91,28 @@ export function formatEditValue(value: number) {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
 }
 
-export function weekdayShort(dateKey: string) {
-  return parseDateKey(dateKey).toLocaleDateString("en-US", { weekday: "short" }).toUpperCase();
+export function weekdayShort(dateKey: string, locale: "ko" | "en" = "en") {
+  const tag = locale === "ko" ? "ko-KR" : "en-US";
+  const label = parseDateKey(dateKey).toLocaleDateString(tag, { weekday: "short" });
+  return locale === "ko" ? label : label.toUpperCase();
 }
 
-export function monthLabel(date: Date) {
-  return date.toLocaleDateString("en-US", { month: "long", year: "numeric" });
+export function monthLabel(date: Date, locale: "ko" | "en" = "en") {
+  return date.toLocaleDateString(locale === "ko" ? "ko-KR" : "en-US", { month: "long", year: "numeric" });
 }
 
-export function shortMonthDay(dateKey: string) {
-  return parseDateKey(dateKey)
-    .toLocaleDateString("en-US", { month: "short", day: "numeric" })
-    .toUpperCase();
+export function shortMonthDay(dateKey: string, locale: "ko" | "en" = "en") {
+  const label = parseDateKey(dateKey).toLocaleDateString(locale === "ko" ? "ko-KR" : "en-US", { month: "short", day: "numeric" });
+  return locale === "ko" ? label : label.toUpperCase();
 }
 
-export function greeting(date: Date) {
+export function greeting(date: Date, locale: "ko" | "en" = "en") {
   const hour = date.getHours();
+  if (locale === "ko") {
+    if (hour < 12) return "좋은 아침이에요";
+    if (hour < 18) return "좋은 오후예요";
+    return "좋은 저녁이에요";
+  }
   if (hour < 12) return "Good Morning";
   if (hour < 18) return "Good Afternoon";
   return "Good Evening";
@@ -127,8 +133,9 @@ export function formatTimer(totalSeconds: number) {
   return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-export function formatDurationMinutes(totalSeconds: number) {
-  return `${Math.max(1, Math.round(totalSeconds / 60))} min`;
+export function formatDurationMinutes(totalSeconds: number, locale: "ko" | "en" = "en") {
+  const minutes = Math.max(1, Math.round(totalSeconds / 60));
+  return locale === "ko" ? `${minutes}분` : `${minutes} min`;
 }
 
 export function weightStep(equipment: Equipment) {

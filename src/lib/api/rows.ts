@@ -63,7 +63,12 @@ export const WORKOUT_SELECT = `
       weight,
       reps,
       completed,
-      estimated_1rm
+      estimated_1rm,
+      rpe,
+      rir,
+      target_reps,
+      recommendation_weight,
+      recommendation_applied
     )
   )
 `;
@@ -90,7 +95,12 @@ export const PROGRESS_SELECT = `
       weight,
       reps,
       completed,
-      estimated_1rm
+      estimated_1rm,
+      rpe,
+      rir,
+      target_reps,
+      recommendation_weight,
+      recommendation_applied
     )
   )
 `;
@@ -103,6 +113,11 @@ interface SetRow {
   reps: number | string;
   completed: boolean;
   estimated_1rm: number | string | null;
+  rpe?: number | string | null;
+  rir?: number | string | null;
+  target_reps?: number | string | null;
+  recommendation_weight?: number | string | null;
+  recommendation_applied?: boolean | null;
 }
 
 interface SessionRow {
@@ -135,6 +150,11 @@ function mapSet(row: SetRow): WorkoutSet {
     weight: num(row.weight),
     reps: num(row.reps),
     completed: Boolean(row.completed),
+    rpe: row.rpe == null ? null : num(row.rpe),
+    rir: row.rir == null ? null : num(row.rir),
+    targetReps: row.target_reps == null ? null : num(row.target_reps),
+    recommendationWeight: row.recommendation_weight == null ? null : num(row.recommendation_weight),
+    recommendationApplied: Boolean(row.recommendation_applied),
   };
 }
 
@@ -189,6 +209,11 @@ export function setPayload(workoutExerciseId: string, set: WorkoutSet) {
     completed: set.completed,
     estimated_1rm: estimated,
     completed_at: set.completed ? new Date().toISOString() : null,
+    rpe: set.rpe ?? null,
+    rir: set.rir ?? null,
+    target_reps: set.targetReps ?? null,
+    recommendation_weight: set.recommendationWeight ?? null,
+    recommendation_applied: Boolean(set.recommendationApplied),
   };
 }
 
@@ -223,6 +248,7 @@ export function mapProfile(profile: {
   compound_rest_seconds: number | null;
   accessory_rest_seconds: number | null;
   weekly_goal: number | null;
+  effort_scale?: string | null;
 } | null): Profile {
   const unit: Unit = settings?.unit === "lb" || profile?.unit === "lb" ? "lb" : "kg";
   const theme: ThemePreference =
@@ -235,6 +261,7 @@ export function mapProfile(profile: {
     compoundRestSec: num(settings?.compound_rest_seconds, 180),
     accessoryRestSec: num(settings?.accessory_rest_seconds, 90),
     weeklyGoal: num(settings?.weekly_goal, 4),
+    effortScale: settings?.effort_scale === "rir" ? "rir" : "rpe",
   };
 }
 

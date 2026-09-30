@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { formatTimer } from "@/lib/format";
+import { useI18n } from "@/components/providers/LocaleProvider";
 
 interface RestTimerProps {
   secondsLeft: number;
@@ -26,17 +27,18 @@ function playBeep() {
   oscillator.stop(context.currentTime + 0.25);
 }
 
-export function notifyRestComplete(exerciseName: string) {
+export function notifyRestComplete(title: string, body: string) {
   if (typeof navigator !== "undefined" && "vibrate" in navigator) {
     navigator.vibrate([180, 80, 180]);
   }
   playBeep();
   if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-    new Notification("Rest complete", { body: `${exerciseName} · next set` });
+    new Notification(title, { body });
   }
 }
 
 export function RestTimer({ secondsLeft, total, exerciseName, onAdd, onSkip }: RestTimerProps) {
+  const { t } = useI18n();
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">("unsupported");
 
   useEffect(() => {
@@ -50,16 +52,16 @@ export function RestTimer({ secondsLeft, total, exerciseName, onAdd, onSkip }: R
     <div className="fixed bottom-[calc(5.75rem+env(safe-area-inset-bottom))] left-1/2 z-30 w-[min(100%-2rem,398px)] -translate-x-1/2 rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4 shadow-[var(--shadow)]">
       <div className="flex items-end justify-between">
         <div>
-          <p className="text-[11px] font-black tracking-[0.18em] text-[var(--accent-text)]">REST</p>
+          <p className="text-[11px] font-black tracking-[0.18em] text-[var(--accent-text)]">{t("restLabel")}</p>
           <p className="text-4xl font-black tabular-nums tracking-tight">{formatTimer(secondsLeft)}</p>
           <p className="text-xs text-[var(--muted)]">{exerciseName}</p>
         </div>
         <div className="flex gap-2">
           <button type="button" onClick={onAdd} className="h-12 rounded-2xl bg-[var(--bg-muted)] px-3 text-sm font-bold">
-            +30 SEC
+            {t("restAdd")}
           </button>
           <button type="button" onClick={onSkip} className="h-12 rounded-2xl bg-[var(--accent)] px-4 text-sm font-black text-[var(--accent-ink)]">
-            SKIP
+            {t("restSkip")}
           </button>
         </div>
       </div>
@@ -75,7 +77,7 @@ export function RestTimer({ secondsLeft, total, exerciseName, onAdd, onSkip }: R
           }}
           className="mt-3 text-xs font-semibold text-[var(--muted)]"
         >
-          Enable rest alerts
+          {t("restAlerts")}
         </button>
       ) : null}
     </div>

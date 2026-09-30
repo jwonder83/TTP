@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist } from "next/font/google";
 import { AppStateProvider } from "@/components/providers/AppStateProvider";
+import { LocaleProvider } from "@/components/providers/LocaleProvider";
 import { AppShell } from "@/components/layout/AppShell";
 import "./globals.css";
 
@@ -39,7 +40,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
       <body className="antialiased" suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
         <AppStateProvider>
-          <AppShell>{children}</AppShell>
+          <LocaleProvider>
+            <AppShell>{children}</AppShell>
+          </LocaleProvider>
         </AppStateProvider>
       </body>
     </html>

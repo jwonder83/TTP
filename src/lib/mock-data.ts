@@ -19,6 +19,7 @@ const PROFILE: Profile = {
   compoundRestSec: 180,
   accessoryRestSec: 90,
   weeklyGoal: 4,
+  effortScale: "rpe",
 };
 
 function exercise(

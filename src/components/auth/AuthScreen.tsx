@@ -6,38 +6,41 @@ import { useState } from "react";
 import { friendlyError } from "@/lib/api/errors";
 import { signIn, signUp } from "@/lib/api/auth";
 import { useAppState } from "@/components/providers/AppStateProvider";
+import { useI18n } from "@/components/providers/LocaleProvider";
+import type { MessageKey } from "@/lib/i18n/messages";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
   const router = useRouter();
+  const { t } = useI18n();
   const { configured } = useAppState();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [success, setSuccess] = useState<string | null>(null);
+  const [error, setError] = useState<MessageKey | null>(null);
+  const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
     setError(null);
-    setSuccess(null);
+    setSuccess(false);
     if (!EMAIL_RE.test(email.trim())) {
-      setError("Enter a valid email address.");
+      setError("errEmail");
       return;
     }
     if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+      setError("errPassword");
       return;
     }
     if (mode === "signup" && password !== confirm) {
-      setError("Passwords do not match.");
+      setError("errMatch");
       return;
     }
     if (mode === "signup" && !name.trim()) {
-      setError("Enter your name.");
+      setError("errName");
       return;
     }
     setLoading(true);
@@ -50,7 +53,7 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
       }
       const result = await signUp({ name, email, password });
       if (!result.session) {
-        setSuccess("Account created. Check your email to confirm, then log in.");
+        setSuccess(true);
         setLoading(false);
         return;
       }
@@ -67,40 +70,38 @@ export function AuthScreen({ mode }: { mode: "login" | "signup" }) {
     <div className="flex min-h-[calc(100dvh-2rem)] flex-col justify-center py-8">
       <p className="text-[11px] font-black tracking-[0.22em] text-[var(--faint)]">IRON LOG</p>
       <h1 className="mt-3 text-5xl font-black leading-none tracking-tight">
-        TRAIN.
+        {t("slogan1")}
         <br />
-        TRACK.
+        {t("slogan2")}
         <br />
-        PROGRESS.
+        {t("slogan3")}
       </h1>
       {!configured ? (
-        <p className="mt-6 rounded-2xl bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--muted)]">
-          Add NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY to .env.local, then restart the dev server.
-        </p>
+        <p className="mt-6 rounded-2xl bg-[var(--bg-elevated)] px-4 py-3 text-sm text-[var(--muted)]">{t("authEnv")}</p>
       ) : (
         <form onSubmit={(event) => void submit(event)} className="mt-8 space-y-3">
-          {mode === "signup" ? <Field label="NAME" value={name} onChange={setName} autoComplete="name" /> : null}
-          <Field label="EMAIL" value={email} onChange={setEmail} type="email" autoComplete="email" />
-          <Field label="PASSWORD" value={password} onChange={setPassword} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
+          {mode === "signup" ? <Field label={t("authName")} value={name} onChange={setName} autoComplete="name" /> : null}
+          <Field label={t("authEmail")} value={email} onChange={setEmail} type="email" autoComplete="email" />
+          <Field label={t("authPassword")} value={password} onChange={setPassword} type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} />
           {mode === "signup" ? (
-            <Field label="CONFIRM PASSWORD" value={confirm} onChange={setConfirm} type="password" autoComplete="new-password" />
+            <Field label={t("authConfirm")} value={confirm} onChange={setConfirm} type="password" autoComplete="new-password" />
           ) : null}
-          {error ? <p className="text-sm font-semibold text-[var(--danger)]">{error}</p> : null}
-          {success ? <p className="text-sm font-semibold text-[var(--accent-text)]">{success}</p> : null}
+          {error ? <p className="text-sm font-semibold text-[var(--danger)]">{t(error)}</p> : null}
+          {success ? <p className="text-sm font-semibold text-[var(--accent-text)]">{t("authCreated")}</p> : null}
           <button
             type="submit"
             disabled={loading}
             className="h-14 w-full rounded-2xl bg-[var(--accent)] text-base font-black tracking-wide text-[var(--accent-ink)] disabled:opacity-40"
           >
-            {loading ? "..." : mode === "login" ? "LOGIN" : "CREATE ACCOUNT"}
+            {loading ? "..." : mode === "login" ? t("authLogin") : t("authCreate")}
           </button>
           {mode === "login" ? (
             <Link href="/signup" className="flex h-12 items-center justify-center text-sm font-black tracking-wide">
-              CREATE ACCOUNT
+              {t("authCreate")}
             </Link>
           ) : (
             <Link href="/login" className="flex h-12 items-center justify-center text-sm font-black tracking-wide">
-              LOGIN
+              {t("authLogin")}
             </Link>
           )}
         </form>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Pencil, Trash2 } from "lucide-react";
+import { useI18n } from "@/components/providers/LocaleProvider";
 import type { Exercise, Routine } from "@/lib/types";
 
 interface RoutineCardProps {
@@ -12,9 +13,13 @@ interface RoutineCardProps {
 }
 
 export function RoutineCard({ routine, exercises, onStart, onEdit, onDelete }: RoutineCardProps) {
+  const { t, exerciseName } = useI18n();
   const names = [...routine.exercises]
     .sort((a, b) => a.orderIndex - b.orderIndex)
-    .map((item) => exercises.find((exercise) => exercise.id === item.exerciseId)?.name)
+    .map((item) => {
+      const name = exercises.find((exercise) => exercise.id === item.exerciseId)?.name;
+      return name ? exerciseName(name) : undefined;
+    })
     .filter((name): name is string => Boolean(name));
 
   return (
@@ -31,12 +36,12 @@ export function RoutineCard({ routine, exercises, onStart, onEdit, onDelete }: R
       </button>
       <div className="mt-4 flex gap-2">
         <button type="button" onClick={onStart} className="h-11 flex-1 rounded-2xl bg-[var(--accent)] text-sm font-black text-[var(--accent-ink)]">
-          START
+          {t("workoutStart")}
         </button>
-        <button type="button" onClick={onEdit} aria-label={`Edit ${routine.name}`} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--bg-muted)]">
+        <button type="button" onClick={onEdit} aria-label={t("builderEditAria", { name: routine.name })} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--bg-muted)]">
           <Pencil size={16} />
         </button>
-        <button type="button" onClick={onDelete} aria-label={`Delete ${routine.name}`} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--bg-muted)] text-[var(--danger)]">
+        <button type="button" onClick={onDelete} aria-label={t("builderDeleteAria", { name: routine.name })} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--bg-muted)] text-[var(--danger)]">
           <Trash2 size={16} />
         </button>
       </div>

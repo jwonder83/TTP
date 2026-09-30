@@ -2,7 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Check } from "lucide-react";
-import { SET_TYPE_META, cx, displayToKg, formatEditValue, kgToDisplay } from "@/lib/format";
+import { cx, displayToKg, formatEditValue, kgToDisplay } from "@/lib/format";
+import { useI18n } from "@/components/providers/LocaleProvider";
 import type { SetType, Unit, WorkoutSet } from "@/lib/types";
 
 interface SetRowProps {
@@ -14,6 +15,7 @@ interface SetRowProps {
 }
 
 export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: SetRowProps) {
+  const { t, setShort } = useI18n();
   const weightFocused = useRef(false);
   const repsFocused = useRef(false);
   const [weightText, setWeightText] = useState(() => formatEditValue(kgToDisplay(set.weight, unit)));
@@ -56,14 +58,14 @@ export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: Se
       )}
     >
       <span className="text-center text-sm font-bold tabular-nums text-[var(--muted)]">{set.setNumber}</span>
-      <button type="button" onClick={onPickType} className={`badge badge-${set.setType}`} aria-label="Change set type">
-        {SET_TYPE_META[set.setType as SetType].short}
+      <button type="button" onClick={onPickType} className={`badge badge-${set.setType}`} aria-label={t("cardChangeType")}>
+        {setShort(set.setType as SetType)}
       </button>
       <input
         data-field="weight"
         inputMode="decimal"
         enterKeyHint="next"
-        aria-label={`Set ${set.setNumber} weight`}
+        aria-label={t("cardWeightAria", { number: set.setNumber })}
         value={weightText}
         onFocus={(event) => {
           weightFocused.current = true;
@@ -92,7 +94,7 @@ export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: Se
         data-field="reps"
         inputMode="numeric"
         enterKeyHint="next"
-        aria-label={`Set ${set.setNumber} reps`}
+        aria-label={t("cardRepsAria", { number: set.setNumber })}
         value={repsText}
         onFocus={(event) => {
           repsFocused.current = true;
@@ -120,7 +122,7 @@ export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: Se
       />
       <button
         type="button"
-        aria-label={set.completed ? "Mark set incomplete" : "Complete set"}
+        aria-label={set.completed ? t("cardIncomplete") : t("cardComplete")}
         onClick={onToggleComplete}
         className={cx(
           "flex h-11 w-11 items-center justify-center rounded-full border transition active:scale-95",

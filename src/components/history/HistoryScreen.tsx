@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useAppState } from "@/components/providers/AppStateProvider";
+import { useI18n } from "@/components/providers/LocaleProvider";
 import { workoutStats } from "@/lib/calculations";
 import {
   cx,
@@ -15,7 +16,11 @@ import {
   toDateKey,
 } from "@/lib/format";
 
-const WEEKDAYS = ["M", "T", "W", "T", "F", "S", "S"];
+function weekdayHeaders(locale: "ko" | "en") {
+  return Array.from({ length: 7 }, (_, index) =>
+    new Date(2024, 0, index + 1).toLocaleDateString(locale === "ko" ? "ko-KR" : "en-US", { weekday: "narrow" }),
+  );
+}
 
 function monthCells(year: number, month: number) {
   const firstWeekday = new Date(year, month, 1).getDay();
@@ -29,6 +34,7 @@ function monthCells(year: number, month: number) {
 
 export function HistoryScreen() {
   const { history, exercises, profile, ensureMonth, historyHasMore, loadMoreHistory } = useAppState();
+  const { locale, t, exerciseName } = useI18n();
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState(() => toDateKey(new Date()));
   const year = cursor.getFullYear();
@@ -50,16 +56,16 @@ export function HistoryScreen() {
       <header className="flex items-center justify-between">
         <button
           type="button"
-          aria-label="Previous month"
+          aria-label={t("historyPrev")}
           onClick={() => setCursor(new Date(year, month - 1, 1))}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--bg-elevated)]"
         >
           <ChevronLeft size={18} />
         </button>
-        <h1 className="text-xl font-black">{monthLabel(cursor)}</h1>
+        <h1 className="text-xl font-black">{monthLabel(cursor, locale)}</h1>
         <button
           type="button"
-          aria-label="Next month"
+          aria-label={t("historyNext")}
           onClick={() => setCursor(new Date(year, month + 1, 1))}
           className="flex h-11 w-11 items-center justify-center rounded-full bg-[var(--bg-elevated)]"
         >
@@ -68,7 +74,7 @@ export function HistoryScreen() {
       </header>
 
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-[var(--faint)]">
-        {WEEKDAYS.map((label, index) => (
+        {weekdayHeaders(locale).map((label, index) => (
           <span key={`${label}-${index}`}>{label}</span>
         ))}
       </div>
@@ -102,24 +108,24 @@ export function HistoryScreen() {
 
       {history.length === 0 ? (
         <div className="rounded-3xl border border-dashed border-[var(--line)] px-4 py-8 text-center">
-          <p className="text-sm font-black tracking-wide">NO WORKOUTS YET</p>
-          <p className="mt-1 text-sm text-[var(--muted)]">Start your first workout.</p>
+          <p className="text-sm font-black tracking-wide">{t("historyNoneTitle")}</p>
+          <p className="mt-1 text-sm text-[var(--muted)]">{t("historyNoneBody")}</p>
           <Link href="/workout" className="mt-4 inline-flex h-12 items-center justify-center rounded-2xl bg-[var(--accent)] px-5 font-black text-[var(--accent-ink)]">
-            START WORKOUT
+            {t("historyStart")}
           </Link>
         </div>
       ) : null}
 
       {dayWorkouts.length === 0 && history.length > 0 ? (
         <p className="rounded-3xl border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
-          No workout on this day.
+          {t("historyEmptyDay")}
         </p>
       ) : (
         dayWorkouts.map((workout) => {
           const stats = workoutStats(workout);
           return (
             <article key={workout.id} className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
-              <p className="text-[11px] font-black tracking-wide text-[var(--faint)]">WORKOUT</p>
+              <p className="text-[11px] font-black tracking-wide text-[var(--faint)]">{t("historyWorkout")}</p>
               <h2 className="mt-1 text-xl font-black">{workout.routineName}</h2>
               <div className="mt-4 space-y-4">
                 {workout.exercises.map((session) => {
@@ -128,7 +134,7 @@ export function HistoryScreen() {
                   const completed = session.sets.filter((set) => set.completed);
                   return (
                     <section key={session.id}>
-                      <h3 className="font-bold">{exercise?.name ?? "Exercise"}</h3>
+                      <h3 className="font-bold">{exercise ? exerciseName(exercise.name) : t("exerciseFallback")}</h3>
                       <ul className="mt-1 space-y-0.5">
                         {completed.map((set) => (
                           <li key={set.id} className="text-sm tabular-nums text-[var(--muted)]">
@@ -142,11 +148,11 @@ export function HistoryScreen() {
               </div>
               <div className="mt-4 grid grid-cols-2 gap-2 border-t border-[var(--line)] pt-3 text-sm">
                 <p>
-                  <span className="block text-[11px] font-bold text-[var(--faint)]">DURATION</span>
-                  <span className="font-black">{formatDurationMinutes(stats.durationSec)}</span>
+                  <span className="block text-[11px] font-bold text-[var(--faint)]">{t("historyDuration")}</span>
+                  <span className="font-black">{formatDurationMinutes(stats.durationSec, locale)}</span>
                 </p>
                 <p>
-                  <span className="block text-[11px] font-bold text-[var(--faint)]">VOLUME</span>
+                  <span className="block text-[11px] font-bold text-[var(--faint)]">{t("historyVolume")}</span>
                   <span className="font-black tabular-nums">
                     {formatVolume(stats.volume, profile.unit)} {profile.unit}
                   </span>
@@ -158,7 +164,7 @@ export function HistoryScreen() {
       )}
       {historyHasMore ? (
         <button type="button" onClick={() => void loadMoreHistory()} className="h-12 w-full rounded-2xl bg-[var(--bg-elevated)] text-sm font-black">
-          Load more
+          {t("historyLoadMore")}
         </button>
       ) : null}
     </div>
