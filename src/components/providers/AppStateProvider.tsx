@@ -12,7 +12,12 @@ import { saveProfile } from "@/lib/api/profiles";
 import { fetchRecords } from "@/lib/api/progress";
 import { deleteRoutine as removeRoutine, saveRoutine as persistRoutine } from "@/lib/api/routines";
 import { mergeWorkouts } from "@/lib/api/rows";
+import { saveExerciseNote, saveProgram, type TrainingProgram } from "@/lib/api/programs";
 import { saveGoal, saveReadiness, saveRecommendation, saveTrainingConfig } from "@/lib/api/training";
+import { clearOfflineWorkout, loadOfflineWorkout, saveOfflineWorkout, writeQueueItem } from "@/lib/offline/db";
+import { isTransientNetwork, queueId, type SyncStatus } from "@/lib/offline/model";
+import { rememberFinish, runSync } from "@/lib/offline/runSync";
+import { sessionFromProgramExercise } from "@/lib/program/buildWorkout";
 import {
   cancelWorkout,
   completeWorkout,
@@ -26,6 +31,7 @@ import {
   insertSet,
   monthRange,
   persistActiveWorkout,
+  updateSessionExercise,
   upsertSets,
 } from "@/lib/api/workouts";
 import { prHitsAgainstRecords, workoutStats } from "@/lib/calculations";
@@ -64,6 +70,8 @@ interface RemoteState {
   latestSetPr: RecentPr | null;
   trainingConfigs: TrainingConfig[];
   goals: TrainingGoal[];
+  programs: TrainingProgram[];
+  exerciseNotes: Array<{ exerciseId: string; body: string }>;
 }
 
 interface AppStateContextValue {
@@ -79,6 +87,9 @@ interface AppStateContextValue {
   latestSetPr: RecentPr | null;
   trainingConfigs: TrainingConfig[];
   goals: TrainingGoal[];
+  programs: TrainingProgram[];
+  exerciseNotes: Array<{ exerciseId: string; body: string }>;
+  syncStatus: SyncStatus;
   chrome: ChromeMode;
   setChrome: (chrome: ChromeMode) => void;
   saveError: MessageKey | null;
@@ -98,6 +109,10 @@ interface AppStateContextValue {
   startWorkout: (routineId: string, options?: ActivePlanOptions) => Promise<boolean>;
   saveTrainingConfig: (config: TrainingConfig) => Promise<void>;
   saveGoal: (goal: TrainingGoal) => Promise<void>;
+  saveProgram: (program: TrainingProgram) => Promise<void>;
+  saveExerciseNote: (exerciseId: string, body: string) => Promise<void>;
+  startProgramDay: (programId: string, dayId: string) => Promise<boolean>;
+  replaceWorkoutExercise: (sessionId: string, exerciseId: string) => Promise<void>;
   updateSet: (sessionExerciseId: string, setId: string, patch: Partial<WorkoutSet>) => void;
   addSet: (sessionExerciseId: string) => Promise<void>;
   removeLastSet: (sessionExerciseId: string) => Promise<void>;
@@ -144,6 +159,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   const [ready, setReady] = useState(false);
   const [chrome, setChrome] = useState<ChromeMode>("default");
   const [saveError, setSaveError] = useState<MessageKey | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("SYNCED");
   const [historyHasMore, setHistoryHasMore] = useState(false);
   const [migrationOffer, setMigrationOffer] = useState(false);
   const [migrationBusy, setMigrationBusy] = useState(false);
@@ -179,9 +195,23 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     try {
       await upsertSets(batch);
       setSaveError(null);
+      setSyncStatus("SYNCED");
     } catch (error) {
-      for (const item of batch) pendingSets.current.set(item.set.id, item);
-      report("set-save", error);
+      await Promise.all(
+        batch.map((item) =>
+          writeQueueItem({
+            id: queueId("SET_UPSERT", item.set.id),
+            type: "SET_UPSERT",
+            entityId: item.set.id,
+            payload: item,
+            createdAt: new Date().toISOString(),
+            retryCount: 0,
+            status: "pending",
+          }),
+        ),
+      );
+      if (isTransientNetwork(error)) setSyncStatus(typeof navigator !== "undefined" && navigator.onLine === false ? "OFFLINE" : "PENDING");
+      else report("set-save", error);
     }
   }, [report]);
 
@@ -242,6 +272,10 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           }
         }
         if (stale()) return;
+        if (!active) {
+          const stored = await loadOfflineWorkout(user.id).catch(() => null);
+          if (stored) active = { workout: stored, updatedAt: new Date().toISOString() };
+        }
         const today = new Date();
         loadedMonthsRef.current = new Set([`${today.getFullYear()}-${today.getMonth()}`]);
         historyOffsetRef.current = account.historyPageCount;
@@ -263,6 +297,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           latestSetPr: account.latestSetPr,
           trainingConfigs: account.trainingConfigs,
           goals: account.goals,
+          programs: account.programs,
+          exerciseNotes: account.exerciseNotes,
         });
         const local = loadState();
         setMigrationOffer(Boolean(local && hasUserLocalData(local) && !migrationChoice(user.id)));
@@ -299,6 +335,22 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
   }, [bootstrap]);
 
   useEffect(() => {
+    const sync = () => {
+      const userId = userIdRef.current;
+      if (!userId) return;
+      setSyncStatus("SYNCING");
+      void runSync(userId).then((status) => setSyncStatus(status));
+    };
+    window.addEventListener("online", sync);
+    const onOffline = () => setSyncStatus("OFFLINE");
+    window.addEventListener("offline", onOffline);
+    return () => {
+      window.removeEventListener("online", sync);
+      window.removeEventListener("offline", onOffline);
+    };
+  }, []);
+
+  useEffect(() => {
     const onHide = () => void flushSets();
     window.addEventListener("pagehide", onHide);
     return () => window.removeEventListener("pagehide", onHide);
@@ -308,9 +360,11 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     if (!loadedRef.current || !state?.userId) return;
     if (state.activeWorkout) {
       saveActiveBackup({ userId: state.userId, savedAt: new Date().toISOString(), workout: state.activeWorkout });
+      void saveOfflineWorkout(state.userId, state.activeWorkout).catch(() => undefined);
       return;
     }
     clearActiveBackup();
+    void clearOfflineWorkout(state.userId).catch(() => undefined);
   }, [state?.activeWorkout, state?.userId]);
 
   useEffect(() => {
@@ -450,6 +504,9 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
       latestSetPr: state?.latestSetPr ?? null,
       trainingConfigs: state?.trainingConfigs ?? [],
       goals: state?.goals ?? [],
+      programs: state?.programs ?? [],
+      exerciseNotes: state?.exerciseNotes ?? [],
+      syncStatus,
       chrome,
       setChrome,
       saveError,
@@ -694,6 +751,19 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
           await insertSession(workout.id, session);
           setSaveError(null);
         } catch (error) {
+          if (isTransientNetwork(error)) {
+            await writeQueueItem({
+              id: queueId("SESSION_INSERT", session.id),
+              type: "SESSION_INSERT",
+              entityId: session.id,
+              payload: { workoutId: workout.id, session },
+              createdAt: new Date().toISOString(),
+              retryCount: 0,
+              status: "pending",
+            });
+            setSyncStatus("PENDING");
+            return;
+          }
           commitWorkout(previous);
           report("exercise-add", error);
         }
@@ -730,6 +800,8 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             startedAt: active.startedAt,
             finishedAt,
             exercises: active.exercises,
+            programId: active.programId ?? null,
+            programDayId: active.programDayId ?? null,
           };
           try {
             const outcome = await completeWorkout(userIdRef.current, workout);
@@ -738,6 +810,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             const latest = hits.find((hit) => hit.recordType === "e1rm" && hit.weight && hit.reps);
             workoutRef.current = null;
             clearActiveBackup();
+            void clearOfflineWorkout(userIdRef.current);
             setState((snapshot) => {
               if (!snapshot) return snapshot;
               const history = snapshot.history.some((item) => item.id === workout.id) ? snapshot.history : [workout, ...snapshot.history];
@@ -759,14 +832,135 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
             }
             return { workout, prs: hits, stats: outcome.stats ?? workoutStats(workout) };
           } catch (error) {
-            report("workout-finish", error);
-            return null;
+            if (!isTransientNetwork(error) || !userIdRef.current) {
+              report("workout-finish", error);
+              return null;
+            }
+            const hits = prHitsAgainstRecords(current.records, workout);
+            await rememberFinish(workout);
+            await writeQueueItem({
+              id: queueId("WORKOUT_FINISH", workout.id),
+              type: "WORKOUT_FINISH",
+              entityId: workout.id,
+              payload: { workout },
+              createdAt: new Date().toISOString(),
+              retryCount: 0,
+              status: "pending",
+            });
+            workoutRef.current = null;
+            clearActiveBackup();
+            setSyncStatus("PENDING");
+            setState((snapshot) => {
+              if (!snapshot) return snapshot;
+              const history = snapshot.history.some((item) => item.id === workout.id) ? snapshot.history : [workout, ...snapshot.history];
+              return { ...snapshot, history, activeWorkout: null, records: applyHits(snapshot.records, hits) };
+            });
+            return { workout, prs: hits, stats: workoutStats(workout) };
           }
         })().finally(() => {
           finishRef.current = null;
         });
         finishRef.current = run;
         return run;
+      },
+      replaceWorkoutExercise: async (sessionId, exerciseId) => {
+        const current = stateRef.current;
+        const active = workoutRef.current;
+        if (!current || !active) return;
+        const next = {
+          ...active,
+          exercises: active.exercises.map((session) => (session.id === sessionId ? { ...session, exerciseId } : session)),
+        };
+        commitWorkout(next);
+        try {
+          await updateSessionExercise(sessionId, exerciseId);
+          setSyncStatus("SYNCED");
+        } catch (error) {
+          if (!isTransientNetwork(error)) {
+            report("replace", error);
+            return;
+          }
+          await writeQueueItem({
+            id: queueId("EXERCISE_REPLACE", sessionId),
+            type: "EXERCISE_REPLACE",
+            entityId: sessionId,
+            payload: { sessionId, exerciseId },
+            createdAt: new Date().toISOString(),
+            retryCount: 0,
+            status: "pending",
+          });
+          setSyncStatus(navigator.onLine ? "PENDING" : "OFFLINE");
+        }
+      },
+      saveExerciseNote: async (exerciseId, body) => {
+        const current = stateRef.current;
+        if (!current || !userIdRef.current) return;
+        const notes = current.exerciseNotes.some((item) => item.exerciseId === exerciseId)
+          ? current.exerciseNotes.map((item) => (item.exerciseId === exerciseId ? { exerciseId, body } : item))
+          : [...current.exerciseNotes, { exerciseId, body }];
+        setState({ ...current, exerciseNotes: notes });
+        try {
+          await saveExerciseNote(userIdRef.current, exerciseId, body);
+        } catch (error) {
+          if (!isTransientNetwork(error)) report("note", error);
+        }
+      },
+      saveProgram: async (program) => {
+        const current = stateRef.current;
+        if (!current || !userIdRef.current) return;
+        const programs = current.programs.some((item) => item.id === program.id)
+          ? current.programs.map((item) => (item.id === program.id ? program : item))
+          : [program, ...current.programs];
+        setState({ ...current, programs });
+        try {
+          await saveProgram(userIdRef.current, program);
+        } catch (error) {
+          report("program", error);
+        }
+      },
+      startProgramDay: async (programId, dayId) => {
+        const current = stateRef.current;
+        if (!current || workoutRef.current || !userIdRef.current) return false;
+        const program = current.programs.find((item) => item.id === programId);
+        const day = program?.days.find((item) => item.id === dayId);
+        if (!program || !day) return false;
+        const exercises = day.exercises.flatMap((plan) => {
+          const exercise = current.exercises.find((item) => item.id === plan.exerciseId);
+          if (!exercise) return [];
+          return [sessionFromProgramExercise(plan, exercise, current.history, current.trainingConfigs)];
+        });
+        const activeWorkout: ActiveWorkout = {
+          id: uuid(),
+          routineId: "",
+          routineName: day.name,
+          startedAt: new Date().toISOString(),
+          exercises,
+          programId: program.id,
+          programDayId: day.id,
+        };
+        commitWorkout(activeWorkout);
+        try {
+          await persistActiveWorkout(userIdRef.current, activeWorkout);
+          setSaveError(null);
+          return true;
+        } catch (error) {
+          if (!isTransientNetwork(error)) {
+            commitWorkout(null);
+            report("workout-start", error);
+            return false;
+          }
+          await writeQueueItem({
+            id: queueId("WORKOUT_PERSIST", activeWorkout.id),
+            type: "WORKOUT_PERSIST",
+            entityId: activeWorkout.id,
+            payload: { workout: activeWorkout },
+            createdAt: new Date().toISOString(),
+            retryCount: 0,
+            status: "pending",
+          });
+          setSyncStatus("PENDING");
+          return true;
+        }
       },
       discardWorkout: async () => {
         const workout = workoutRef.current;
@@ -775,6 +969,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
         try {
           if (workout) await cancelWorkout(workout.id);
           clearActiveBackup();
+          if (userIdRef.current) void clearOfflineWorkout(userIdRef.current);
           setSaveError(null);
         } catch (error) {
           commitWorkout(workout);
@@ -800,6 +995,7 @@ export function AppStateProvider({ children }: { children: React.ReactNode }) {
     signOut,
     skipMigration,
     state,
+    syncStatus,
     updateProfile,
   ]);
 

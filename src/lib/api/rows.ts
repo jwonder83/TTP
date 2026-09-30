@@ -50,6 +50,9 @@ export const WORKOUT_SELECT = `
   finished_at,
   duration_seconds,
   total_volume,
+  notes,
+  program_id,
+  program_day_id,
   updated_at,
   workout_exercises (
     id,
@@ -82,6 +85,9 @@ export const PROGRESS_SELECT = `
   finished_at,
   duration_seconds,
   total_volume,
+  notes,
+  program_id,
+  program_day_id,
   updated_at,
   workout_exercises!inner (
     id,
@@ -137,6 +143,9 @@ export interface WorkoutRow {
   finished_at: string | null;
   duration_seconds: number | string | null;
   total_volume: number | string | null;
+  notes?: string | null;
+  program_id?: string | null;
+  program_day_id?: string | null;
   updated_at?: string;
   workout_exercises: SessionRow[] | SessionRow | null;
 }
@@ -183,6 +192,9 @@ export function mapWorkout(row: WorkoutRow): CompletedWorkout {
     exercises: asArray(row.workout_exercises)
       .map(mapSession)
       .sort((a, b) => a.orderIndex - b.orderIndex),
+    notes: row.notes ?? null,
+    programId: row.program_id ?? null,
+    programDayId: row.program_day_id ?? null,
   };
 }
 
@@ -194,6 +206,8 @@ export function mapActive(row: WorkoutRow): ActiveWorkout {
     routineName: workout.routineName,
     startedAt: workout.startedAt,
     exercises: workout.exercises,
+    programId: workout.programId,
+    programDayId: workout.programDayId,
   };
 }
 

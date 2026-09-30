@@ -8,13 +8,14 @@ import type { SetType, Unit, WorkoutSet } from "@/lib/types";
 
 interface SetRowProps {
   set: WorkoutSet;
+  previous?: WorkoutSet;
   unit: Unit;
   onChange: (patch: Partial<WorkoutSet>) => void;
   onToggleComplete: () => void;
   onPickType: () => void;
 }
 
-export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: SetRowProps) {
+export function SetRow({ set, previous, unit, onChange, onToggleComplete, onPickType }: SetRowProps) {
   const { t, setShort } = useI18n();
   const weightFocused = useRef(false);
   const repsFocused = useRef(false);
@@ -50,8 +51,8 @@ export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: Se
   };
 
   return (
+    <div data-set-row>
     <div
-      data-set-row
       className={cx(
         "grid grid-cols-[22px_minmax(68px,1fr)_68px_52px_44px] items-center gap-1 rounded-2xl px-1 py-1",
         set.completed && "bg-[var(--accent-soft)]",
@@ -133,6 +134,12 @@ export function SetRow({ set, unit, onChange, onToggleComplete, onPickType }: Se
       >
         {set.completed ? <Check size={20} strokeWidth={3} /> : null}
       </button>
+    </div>
+    {previous && !set.completed ? (
+      <button type="button" onClick={() => onChange({ weight: previous.weight, reps: previous.reps })} className="mb-1 h-11 px-2 text-xs font-black text-[var(--accent-text)]">
+        {t("copyLast")} {formatEditValue(kgToDisplay(previous.weight, unit))} × {previous.reps}
+      </button>
+    ) : null}
     </div>
   );
 }

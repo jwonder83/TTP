@@ -27,6 +27,7 @@ interface ExerciseCardProps {
   onAddSet: () => void;
   onRemoveLastSet: () => void;
   onRemoveExercise: () => void;
+  onReplace?: () => void;
   onWhy?: () => void;
   onRecalcBackoff?: () => void;
   coachReason?: string | null;
@@ -44,6 +45,7 @@ export function ExerciseCard({
   onAddSet,
   onRemoveLastSet,
   onRemoveExercise,
+  onReplace,
   onWhy,
   onRecalcBackoff,
   coachReason,
@@ -73,9 +75,16 @@ export function ExerciseCard({
             </div>
           ) : null}
         </div>
-        <button type="button" onClick={onRemoveExercise} aria-label={t("cardRemove", { name: exerciseName(exercise.name) })} className="text-[var(--faint)]">
-          <X size={18} />
-        </button>
+        <div className="flex items-center gap-2">
+          {onReplace ? (
+            <button type="button" onClick={onReplace} className="h-11 rounded-xl bg-[var(--bg-muted)] px-3 text-xs font-black">
+              {t("replaceExercise")}
+            </button>
+          ) : null}
+          <button type="button" onClick={onRemoveExercise} aria-label={t("cardRemove", { name: exerciseName(exercise.name) })} className="flex h-11 w-11 items-center justify-center text-[var(--faint)]">
+            <X size={18} />
+          </button>
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-3">
@@ -134,16 +143,20 @@ export function ExerciseCard({
       </div>
 
       <div className="mt-1 space-y-1">
-        {session.sets.map((set) => (
+        {session.sets.map((set) => {
+          const earlier = [...session.sets].filter((item) => item.setNumber < set.setNumber).at(-1);
+          return (
           <SetRow
             key={set.id}
             set={set}
+            previous={earlier}
             unit={unit}
             onChange={(patch) => onChangeSet(set.id, patch)}
             onToggleComplete={() => onToggleComplete(set)}
             onPickType={() => setTypeSetId(set.id)}
           />
-        ))}
+          );
+        })}
       </div>
 
       <div className="mt-3 flex items-center justify-between gap-3">

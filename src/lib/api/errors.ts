@@ -11,7 +11,8 @@ export function isUniqueViolation(error: unknown) {
 }
 
 export function logError(scope: string, error: unknown) {
-  console.error(`[iron-log] ${scope}`, error);
+  const message = errorMessage(error);
+  console.error(`[iron-log] ${scope}: ${message}`);
 }
 
 export function friendlyError(error: unknown): MessageKey {

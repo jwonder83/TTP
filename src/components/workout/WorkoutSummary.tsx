@@ -19,9 +19,10 @@ interface WorkoutSummaryProps {
   trainingConfigs: TrainingConfig[];
   recovery: boolean;
   onDone: () => void;
+  onSaveTemplate: () => void;
 }
 
-export function WorkoutSummary({ result, exercises, unit, history, trainingConfigs, recovery, onDone }: WorkoutSummaryProps) {
+export function WorkoutSummary({ result, exercises, unit, history, trainingConfigs, recovery, onDone, onSaveTemplate }: WorkoutSummaryProps) {
   const { locale, t, exerciseName, recordLabel } = useI18n();
   const nameOf = (id: string) => {
     const name = exercises.find((exercise) => exercise.id === id)?.name;
@@ -79,6 +80,7 @@ export function WorkoutSummary({ result, exercises, unit, history, trainingConfi
 
       <PerformanceBlock result={result} exercises={exercises} unit={unit} history={history} trainingConfigs={trainingConfigs} recovery={recovery} />
 
+      <button type="button" onClick={onSaveTemplate} className="h-12 w-full rounded-2xl bg-[var(--bg-elevated)] font-black">{t("saveTemplate")}</button>
       <button type="button" onClick={onDone} className="h-14 w-full rounded-2xl bg-[var(--text)] text-base font-black text-[var(--bg)]">
         {t("summaryDone")}
       </button>

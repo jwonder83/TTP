@@ -19,7 +19,7 @@ function formatWorkoutTime(totalSeconds: number, hoursLabel: (hours: number, min
 }
 
 export function HomeDashboard() {
-  const { profile, exercises, history, activeWorkout, bodyWeights, latestSetPr, routines, trainingConfigs } = useAppState();
+  const { profile, exercises, history, activeWorkout, bodyWeights, latestSetPr, routines, trainingConfigs, programs } = useAppState();
   const { locale, t, exerciseName, displayName } = useI18n();
   const now = useNow(30_000);
   const today = new Date(now);
@@ -104,6 +104,18 @@ export function HomeDashboard() {
           <p className="mt-1 text-xs text-[var(--muted)]">{profile.unit}</p>
         </article>
       </section>
+
+      {programs.find((program) => program.status === "active") ? (
+        <Link href="/program" className="block rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
+          <p className="text-[11px] font-black tracking-[0.16em] text-[var(--faint)]">{t("programTitle")}</p>
+          <h2 className="mt-1 text-xl font-black">{programs.find((program) => program.status === "active")?.name}</h2>
+          <p className="mt-1 text-sm font-bold text-[var(--muted)]">
+            {t("programWeek")} {programs.find((program) => program.status === "active")?.currentWeek} / {programs.find((program) => program.status === "active")?.durationWeeks}
+          </p>
+        </Link>
+      ) : (
+        <Link href="/program" className="block rounded-3xl border border-dashed border-[var(--line)] p-4 text-sm font-black">{t("programCreate")}</Link>
+      )}
 
       {routines[0] && !activeWorkout ? (
         <section className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">

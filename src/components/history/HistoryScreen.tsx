@@ -37,14 +37,20 @@ export function HistoryScreen() {
   const { locale, t, exerciseName } = useI18n();
   const [cursor, setCursor] = useState(() => new Date());
   const [selected, setSelected] = useState(() => toDateKey(new Date()));
+  const [query, setQuery] = useState("");
   const year = cursor.getFullYear();
   const month = cursor.getMonth();
   const cells = monthCells(year, month);
   const trained = useMemo(() => new Set(history.map((workout) => workout.date)), [history]);
-  const dayWorkouts = history
-    .filter((workout) => workout.date === selected)
-    .sort((a, b) => a.startedAt.localeCompare(b.startedAt));
+  const dayWorkouts = history.filter((workout) => workout.date === selected).sort((a, b) => a.startedAt.localeCompare(b.startedAt));
   const nameOf = (id: string) => exercises.find((exercise) => exercise.id === id);
+  const needle = query.trim().toLowerCase();
+  const visibleWorkouts = needle
+    ? history.filter((workout) => {
+        if (workout.routineName.toLowerCase().includes(needle) || workout.date.includes(needle)) return true;
+        return workout.exercises.some((session) => (nameOf(session.exerciseId)?.name ?? "").toLowerCase().includes(needle));
+      })
+    : dayWorkouts;
   const todayKey = toDateKey(new Date());
 
   useEffect(() => {
@@ -72,6 +78,14 @@ export function HistoryScreen() {
           <ChevronRight size={18} />
         </button>
       </header>
+
+      <input
+        value={query}
+        onChange={(event) => setQuery(event.target.value)}
+        placeholder={t("historySearch")}
+        aria-label={t("historySearch")}
+        className="h-12 w-full rounded-2xl bg-[var(--bg-elevated)] px-4 font-bold outline-none"
+      />
 
       <div className="grid grid-cols-7 gap-1 text-center text-[11px] font-bold text-[var(--faint)]">
         {weekdayHeaders(locale).map((label, index) => (
@@ -116,12 +130,12 @@ export function HistoryScreen() {
         </div>
       ) : null}
 
-      {dayWorkouts.length === 0 && history.length > 0 ? (
+      {visibleWorkouts.length === 0 && history.length > 0 ? (
         <p className="rounded-3xl border border-dashed border-[var(--line)] px-4 py-8 text-center text-sm text-[var(--muted)]">
           {t("historyEmptyDay")}
         </p>
       ) : (
-        dayWorkouts.map((workout) => {
+        visibleWorkouts.map((workout) => {
           const stats = workoutStats(workout);
           return (
             <article key={workout.id} className="rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">

@@ -15,7 +15,8 @@ import { ConfirmDialog, Sheet } from "@/components/ui/Sheet";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { useI18n } from "@/components/providers/LocaleProvider";
 import { sessionsForExercise } from "@/lib/calculations";
-import { formatClock } from "@/lib/format";
+import { formatClock, uuid } from "@/lib/format";
+import { exerciseAlternatives } from "@/lib/program/alternatives";
 import { recommendNextLoad } from "@/lib/recommendations";
 import { calculateBackoffWeight } from "@/lib/training/backoffCalculator";
 import { coachSessions, resolveConfig } from "@/lib/training/history";
@@ -45,6 +46,10 @@ export function WorkoutScreen() {
     finishWorkout,
     discardWorkout,
     deleteRoutine,
+    saveRoutine,
+    replaceWorkoutExercise,
+    programs,
+    saveProgram,
     trainingConfigs,
   } = useAppState();
   const { t, exerciseName } = useI18n();
@@ -60,11 +65,36 @@ export function WorkoutScreen() {
   const [effort, setEffort] = useState<{ sessionId: string; setId: string } | null>(null);
   const [why, setWhy] = useState<{ name: string; text: string; last: string } | null>(null);
   const [finishing, setFinishing] = useState(false);
+  const [replaceSessionId, setReplaceSessionId] = useState<string | null>(null);
+  const [restPrompt, setRestPrompt] = useState(false);
   const now = useNow(250);
 
   useEffect(() => {
     if (searchParams.get("resume") === "1" && activeWorkout) setMode("live");
   }, [activeWorkout, searchParams]);
+
+  useEffect(() => {
+    if (mode !== "live" || typeof navigator === "undefined" || !("wakeLock" in navigator)) return;
+    if (window.localStorage.getItem("iron-log.wake") === "off") return;
+    let released = false;
+    let current: WakeLockSentinel | null = null;
+    const request = () => {
+      void navigator.wakeLock.request("screen").then((lock) => {
+        if (released) void lock.release();
+        else current = lock;
+      }).catch(() => undefined);
+    };
+    request();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") request();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      released = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      void current?.release();
+    };
+  }, [mode]);
 
   useEffect(() => {
     setChrome(mode === "live" ? "session" : "default");
@@ -83,11 +113,14 @@ export function WorkoutScreen() {
   const onToggleComplete = (sessionExerciseId: string, restSeconds: number, name: string, set: WorkoutSet) => {
     const completed = !set.completed;
     updateSet(sessionExerciseId, set.id, { completed });
-    if (completed && typeof navigator !== "undefined" && "vibrate" in navigator) navigator.vibrate(12);
+    if (completed && typeof navigator !== "undefined" && "vibrate" in navigator && window.localStorage.getItem("iron-log.haptics") !== "off") navigator.vibrate(12);
     if (!completed) return;
     if (set.setType !== "warmup" && set.rpe == null && set.rir == null) setEffort({ sessionId: sessionExerciseId, setId: set.id });
     const total = Math.max(15, restSeconds);
     setRest({ exerciseName: name, endsAt: Date.now() + total * 1000, total });
+    if (typeof Notification !== "undefined" && Notification.permission === "default" && window.localStorage.getItem("iron-log.rest-asked") !== "1") {
+      setRestPrompt(true);
+    }
   };
 
   if (mode === "builder") {
@@ -107,6 +140,20 @@ export function WorkoutScreen() {
           setSummary(null);
           setMode("hub");
           router.push("/");
+        }}
+        onSaveTemplate={() => {
+          void saveRoutine({
+            id: uuid(),
+            name: summary.workout.routineName,
+            exercises: summary.workout.exercises.map((session, index) => ({
+              id: uuid(),
+              exerciseId: session.exerciseId,
+              orderIndex: index,
+              defaultSets: Math.max(1, session.sets.filter((set) => set.setType !== "warmup").length),
+              defaultReps: session.sets.find((set) => set.setType !== "warmup")?.reps ?? session.sets[0]?.reps ?? 5,
+              restSeconds: session.restSeconds,
+            })),
+          });
         }}
       />
     );
@@ -166,6 +213,7 @@ export function WorkoutScreen() {
                 onAddSet={() => addSet(session.id)}
                 onRemoveLastSet={() => removeLastSet(session.id)}
                 onRemoveExercise={() => removeWorkoutExercise(session.id)}
+                onReplace={() => setReplaceSessionId(session.id)}
                 onWhy={() =>
                   setWhy({
                     name: exerciseName(exercise.name),
@@ -249,6 +297,56 @@ export function WorkoutScreen() {
             </div>
           ) : null}
         </Sheet>
+        <Sheet open={restPrompt} title={t("restAlertTitle")} onClose={() => { window.localStorage.setItem("iron-log.rest-asked", "1"); setRestPrompt(false); }}>
+          <p className="text-sm leading-6 text-[var(--muted)]">{t("restAlertBody")}</p>
+          <div className="mt-4 grid grid-cols-2 gap-2 pb-2">
+            <button type="button" onClick={() => { window.localStorage.setItem("iron-log.rest-asked", "1"); setRestPrompt(false); void Notification.requestPermission(); }} className="h-12 rounded-2xl bg-[var(--accent)] font-black text-[var(--accent-ink)]">{t("restAlertEnable")}</button>
+            <button type="button" onClick={() => { window.localStorage.setItem("iron-log.rest-asked", "1"); setRestPrompt(false); }} className="h-12 rounded-2xl bg-[var(--bg)] font-bold">{t("restAlertLater")}</button>
+          </div>
+        </Sheet>
+        <Sheet open={replaceSessionId !== null} title={t("replaceExercise")} onClose={() => setReplaceSessionId(null)}>
+          <div className="space-y-2 pb-4">
+            {exerciseAlternatives(
+              exercises.find((item) => item.id === activeWorkout.exercises.find((session) => session.id === replaceSessionId)?.exerciseId) ?? exercises[0],
+              exercises,
+            ).map((choice) => (
+              <div key={choice.id} className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!replaceSessionId) return;
+                    void replaceWorkoutExercise(replaceSessionId, choice.id);
+                    setReplaceSessionId(null);
+                  }}
+                  className="h-12 rounded-2xl bg-[var(--bg)] px-3 text-xs font-black"
+                >
+                  {exerciseName(choice.name)} · {t("thisWorkout")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!replaceSessionId || !activeWorkout.programDayId) return;
+                    const program = programs.find((item) => item.id === activeWorkout.programId);
+                    const fromId = activeWorkout.exercises.find((session) => session.id === replaceSessionId)?.exerciseId;
+                    if (!program || !fromId) return;
+                    void saveProgram({
+                      ...program,
+                      days: program.days.map((day) => day.id !== activeWorkout.programDayId ? day : {
+                        ...day,
+                        exercises: day.exercises.map((item) => item.exerciseId === fromId ? { ...item, exerciseId: choice.id } : item),
+                      }),
+                    });
+                    void replaceWorkoutExercise(replaceSessionId, choice.id);
+                    setReplaceSessionId(null);
+                  }}
+                  className="h-12 rounded-2xl bg-[var(--bg-muted)] px-3 text-xs font-black"
+                >
+                  {t("updateProgram")}
+                </button>
+              </div>
+            ))}
+          </div>
+        </Sheet>
       </div>
     );
   }
@@ -296,6 +394,14 @@ export function WorkoutScreen() {
               setMode("builder");
             }}
             onDelete={() => setDeleteId(routine.id)}
+            onDuplicate={() =>
+              void saveRoutine({
+                ...routine,
+                id: uuid(),
+                name: `${routine.name} B`,
+                exercises: routine.exercises.map((item) => ({ ...item, id: uuid() })),
+              })
+            }
           />
         ))}
       </div>

@@ -3,13 +3,14 @@
 import { usePathname } from "next/navigation";
 import { BottomNavigation } from "@/components/layout/BottomNavigation";
 import { LanguageSelect } from "@/components/layout/LanguageSelect";
+import { PwaRegister } from "@/components/pwa/PwaRegister";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { useI18n } from "@/components/providers/LocaleProvider";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { t } = useI18n();
-  const { ready, chrome, saveError, migrationOffer, migrationBusy, importLocalData, skipMigration } = useAppState();
+  const { ready, chrome, saveError, syncStatus, migrationOffer, migrationBusy, importLocalData, skipMigration } = useAppState();
   const authPage = pathname === "/login" || pathname === "/signup";
   const session = chrome === "session";
 
@@ -21,9 +22,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
         </div>
         {authPage || ready ? (
           <div className={session ? "px-4 pt-1 pb-36" : "px-4 pt-1 pb-32"}>
-            {saveError && !authPage ? (
-              <p className="mb-3 rounded-2xl bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--danger)]">{t(saveError)}</p>
-            ) : null}
+        {saveError && !authPage && syncStatus !== "OFFLINE" && syncStatus !== "PENDING" ? (
+          <p className="mb-3 rounded-2xl bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold text-[var(--danger)]">{t(saveError)}</p>
+        ) : null}
+        {syncStatus === "OFFLINE" || syncStatus === "PENDING" ? (
+          <p className="mb-3 rounded-2xl bg-[var(--bg-elevated)] px-3 py-2 text-sm font-semibold">{syncStatus === "OFFLINE" ? t("offlineSaved") : t("syncPending")}</p>
+        ) : null}
+        <PwaRegister />
             {children}
           </div>
         ) : (

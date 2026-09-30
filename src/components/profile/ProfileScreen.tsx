@@ -1,10 +1,15 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useAppState } from "@/components/providers/AppStateProvider";
 import { useI18n } from "@/components/providers/LocaleProvider";
+import { ConfirmDialog } from "@/components/ui/Sheet";
+import { InstallButton } from "@/components/pwa/PwaRegister";
 import { cx, displayToKg, formatWeight, kgToDisplay, shortMonthDay, toDateKey } from "@/lib/format";
+import { fetchCompletedPage } from "@/lib/api/workouts";
+import { backupDocument, rowsFromHistory, toCsv } from "@/lib/export/build";
+import { APP_VERSION } from "@/lib/offline/model";
 import type { ThemePreference, Unit } from "@/lib/types";
 
 const ProgressChart = dynamic(() => import("@/components/progress/ProgressChart").then((mod) => mod.ProgressChart), {
@@ -12,16 +17,68 @@ const ProgressChart = dynamic(() => import("@/components/progress/ProgressChart"
 });
 
 export function ProfileScreen() {
-  const { profile, bodyWeights, updateProfile, logBodyWeight, signOut } = useAppState();
+  const { profile, bodyWeights, routines, programs, records, exercises, updateProfile, logBodyWeight, signOut } = useAppState();
   const { locale, t, displayName } = useI18n();
   const latest = [...bodyWeights].sort((a, b) => a.date.localeCompare(b.date)).at(-1);
   const [weightText, setWeightText] = useState(latest ? String(kgToDisplay(latest.weight, profile.unit)) : "");
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [wake, setWake] = useState(true);
+  const [haptics, setHaptics] = useState(true);
   const points = [...bodyWeights]
     .sort((a, b) => a.date.localeCompare(b.date))
     .map((entry) => ({
       label: `${new Date(`${entry.date}T00:00:00`).getMonth() + 1}/${new Date(`${entry.date}T00:00:00`).getDate()}`,
       value: kgToDisplay(entry.weight, profile.unit),
     }));
+
+  useEffect(() => {
+    setWake(window.localStorage.getItem("iron-log.wake") !== "off");
+    setHaptics(window.localStorage.getItem("iron-log.haptics") !== "off");
+  }, []);
+
+  async function collectedHistory() {
+    const pages = [];
+    let offset = 0;
+    for (let page = 0; page < 30; page += 1) {
+      const result = await fetchCompletedPage(offset);
+      pages.push(...result.workouts);
+      if (!result.hasMore) break;
+      offset += result.workouts.length;
+    }
+    return pages;
+  }
+
+  function download(filename: string, text: string, type: string) {
+    const blob = new Blob([text], { type });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadCsv() {
+    const history = await collectedHistory();
+    download("iron-log.csv", toCsv(rowsFromHistory(history, exercises)), "text/csv");
+  }
+
+  async function downloadJson() {
+    const history = await collectedHistory();
+    download("iron-log.json", JSON.stringify(backupDocument({ workouts: history, bodyWeights, records, routines, programs })), "application/json");
+  }
+
+  function togglePref(key: string, current: boolean, set: (value: boolean) => void) {
+    const next = !current;
+    window.localStorage.setItem(key, next ? "on" : "off");
+    set(next);
+  }
+
+  async function removeAccount() {
+    const response = await fetch("/api/account/delete", { method: "POST" });
+    setDeleteOpen(false);
+    if (response.ok) await signOut();
+  }
 
   return (
     <div className="space-y-4">
@@ -183,6 +240,20 @@ export function ProfileScreen() {
           ))}
         </div>
       </section>
+
+      <InstallButton />
+      <section className="space-y-2 rounded-3xl border border-[var(--line)] bg-[var(--bg-elevated)] p-4">
+        <h2 className="text-sm font-black">{t("exportData")}</h2>
+        <button type="button" onClick={() => void downloadCsv()} className="h-12 w-full rounded-2xl bg-[var(--bg)] font-black">{t("exportCsv")}</button>
+        <button type="button" onClick={() => void downloadJson()} className="h-12 w-full rounded-2xl bg-[var(--bg)] font-black">{t("exportJson")}</button>
+        <p className="text-xs text-[var(--muted)]">{t("appVersion")} {APP_VERSION}</p>
+      </section>
+      <section className="grid grid-cols-2 gap-2">
+        <button type="button" onClick={() => togglePref("iron-log.wake", wake, setWake)} className="h-12 rounded-2xl bg-[var(--bg-elevated)] text-xs font-black">{t("wakeLock")} {wake ? "ON" : "OFF"}</button>
+        <button type="button" onClick={() => togglePref("iron-log.haptics", haptics, setHaptics)} className="h-12 rounded-2xl bg-[var(--bg-elevated)] text-xs font-black">{t("haptics")} {haptics ? "ON" : "OFF"}</button>
+      </section>
+      <button type="button" onClick={() => setDeleteOpen(true)} className="h-12 w-full rounded-2xl font-bold text-[var(--danger)]">{t("deleteAccount")}</button>
+      <ConfirmDialog open={deleteOpen} title={t("deleteAccount")} body={t("deleteAccountBody")} confirmLabel={t("deleteAccountConfirm")} danger onClose={() => setDeleteOpen(false)} onConfirm={() => void removeAccount()} />
 
       <button
         type="button"

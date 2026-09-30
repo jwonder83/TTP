@@ -72,6 +72,8 @@ export interface ActiveWorkout {
     soreness: "LOW" | "MODERATE" | "HIGH";
   } | null;
   recoveryMode?: boolean;
+  programId?: string | null;
+  programDayId?: string | null;
 }
 
 export interface CompletedWorkout {
@@ -82,6 +84,9 @@ export interface CompletedWorkout {
   startedAt: string;
   finishedAt: string;
   exercises: SessionExercise[];
+  notes?: string | null;
+  programId?: string | null;
+  programDayId?: string | null;
 }
 
 export interface PersonalRecord {

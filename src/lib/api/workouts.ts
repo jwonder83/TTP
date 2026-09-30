@@ -93,6 +93,9 @@ export async function persistActiveWorkout(userId: string, workout: ActiveWorkou
     name: workout.routineName,
     status: "active",
     started_at: workout.startedAt,
+    program_id: workout.programId ?? null,
+    program_day_id: workout.programDayId ?? null,
+    client_updated_at: new Date().toISOString(),
   });
   if (saved.error) throw saved.error;
 
@@ -140,6 +143,11 @@ export async function deleteSession(sessionId: string) {
   if (error) throw error;
 }
 
+export async function updateSessionExercise(sessionId: string, exerciseId: string) {
+  const { error } = await client().from("workout_exercises").update({ exercise_id: exerciseId }).eq("id", sessionId);
+  if (error) throw error;
+}
+
 export async function insertSet(workoutExerciseId: string, set: WorkoutSet) {
   const { error } = await client().from("workout_sets").insert(setPayload(workoutExerciseId, set));
   if (error) throw error;
@@ -160,6 +168,10 @@ export async function completeWorkout(userId: string, workout: CompletedWorkout)
       duration_seconds: stats.durationSec,
       total_volume: Math.round(workoutVolume(workout) * 100) / 100,
       name: workout.routineName,
+      notes: workout.notes ?? null,
+      program_id: workout.programId ?? null,
+      program_day_id: workout.programDayId ?? null,
+      client_updated_at: new Date().toISOString(),
     })
     .eq("id", workout.id)
     .eq("user_id", userId)

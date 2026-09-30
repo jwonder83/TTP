@@ -10,9 +10,10 @@ interface RoutineCardProps {
   onStart: () => void;
   onEdit: () => void;
   onDelete: () => void;
+  onDuplicate: () => void;
 }
 
-export function RoutineCard({ routine, exercises, onStart, onEdit, onDelete }: RoutineCardProps) {
+export function RoutineCard({ routine, exercises, onStart, onEdit, onDelete, onDuplicate }: RoutineCardProps) {
   const { t, exerciseName } = useI18n();
   const names = [...routine.exercises]
     .sort((a, b) => a.orderIndex - b.orderIndex)
@@ -37,6 +38,9 @@ export function RoutineCard({ routine, exercises, onStart, onEdit, onDelete }: R
       <div className="mt-4 flex gap-2">
         <button type="button" onClick={onStart} className="h-11 flex-1 rounded-2xl bg-[var(--accent)] text-sm font-black text-[var(--accent-ink)]">
           {t("workoutStart")}
+        </button>
+        <button type="button" onClick={onDuplicate} className="h-11 rounded-2xl bg-[var(--bg-muted)] px-3 text-xs font-black">
+          {t("duplicateRoutine")}
         </button>
         <button type="button" onClick={onEdit} aria-label={t("builderEditAria", { name: routine.name })} className="flex h-11 w-11 items-center justify-center rounded-2xl bg-[var(--bg-muted)]">
           <Pencil size={16} />
